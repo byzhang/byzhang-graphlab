@@ -41,17 +41,17 @@ FIND_PACKAGE(Boost 1.39 COMPONENTS
 
 
 # # Use CUDA libraries (required only for GPU GraphLab)
-# find_package(CUDA)
-# # If CUDA libraries were not found, ignore commands:
-# #   cuda_add_executable
-# IF(CUDA_FOUND)
-#   message(STATUS "CUDA Found: " ${CUDA_VERSION})
-#   link_libraries(${CUDA_CUBLAS_LIBRARIES})
-# ELSE(CUDA_FOUND)
-#   message(STATUS "CUDA Not Found! GPU Executables will not be compiled.")
-#   macro(CUDA_ADD_EXECUTABLE cuda_target)
-#   endmacro(CUDA_ADD_EXECUTABLE cuda_target)
-# ENDIF(CUDA_FOUND)
+find_package(CUDA)
+# If CUDA libraries were not found, ignore commands:
+#   cuda_add_executable
+IF(CUDA_FOUND)
+  message(STATUS "CUDA Found: " ${CUDA_VERSION})
+  link_libraries(${CUDA_CUBLAS_LIBRARIES})
+ELSE(CUDA_FOUND)
+  message(STATUS "CUDA Not Found! GPU Executables will not be compiled.")
+  macro(CUDA_ADD_EXECUTABLE cuda_target)
+  endmacro(CUDA_ADD_EXECUTABLE cuda_target)
+ENDIF(CUDA_FOUND)
 
 
 
