@@ -1,18 +1,22 @@
 #ifndef GRAPHLAB_PAGERANK_GPU_PROGRAM
 #define GRAPHLAB_PAGERANK_GPU_PGOGRAM
 
+#include <graphlab/gpu/gpu_callback.hpp>
+#include <graphlab/gpu/gpu_scope.hpp>
 
 namespace graphlab {
 
   class pagerank_gpu_program {
+
   public:
+
     // Struct for vertex data
     struct vertex_data_type {
       float value;
       float self_weight;
     };
 
-    // struct for edge data
+    // Struct for edge data
     struct edge_data_type {
       float weight;
       float old_source_value;
@@ -24,7 +28,7 @@ namespace graphlab {
     __device__ static void 
     update_function(scope_type& scope,
                     callback_type& callback) {
-                    
+
       // Get the data associated with the vertex
       vertex_data& vdata = scope.vertex_data();
   
@@ -36,12 +40,12 @@ namespace graphlab {
         // Get the neighobr vertex value
         const vertex_data& neighbor_vdata =
           scope.const_neighbor_vertex_data(scope.source(eid));
-        double neighbor_value = neighbor_vdata.value;
+        float neighbor_value = neighbor_vdata.value;
     
         // Get the edge data for the neighbor
         edge_data& edata = scope.edge_data(eid);
         // Compute the contribution of the neighbor
-        double contribution = edata.weight * neighbor_value;
+        float contribution = edata.weight * neighbor_value;
     
         // Add the contribution to the sum
         sum += contribution;
@@ -60,7 +64,7 @@ namespace graphlab {
     
         // Compute edge-specific residual by comparing the new value of this
         // vertex to the previous value seen by the neighbor vertex.
-        double residual =
+        float residual =
           outedgedata.weight *
           std::fabs(outedgedata.old_source_value - vdata.value);
         // If the neighbor changed sufficiently add to scheduler.

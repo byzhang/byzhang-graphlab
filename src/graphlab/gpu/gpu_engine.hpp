@@ -5,19 +5,11 @@
 #include <cassert>
 #include <algorithm>
 
-
 #include <graphlab/graph/graph.hpp>
 
-
-
 #include <graphlab/macros_def.hpp>
+
 namespace graphlab {
-
-
-  
-
-
-
 
   template<typename GPUProgram>
   struct gpu_graph {
@@ -27,7 +19,6 @@ namespace graphlab {
       vertex_id_t source;
       vertex_id_t target;
       edge_data_type data;
-
     };
     size_t nvertices;
     vertex_data_type* vdata; 
@@ -63,12 +54,12 @@ namespace graphlab {
 
 
   /**
-   * This class defines a basic gpu based engine
+   * This class defines a basic GPU-based engine.
    */
   template<typename Graph>
   class gpu_engine {
 
-  public: // Type declerations
+  public: // Type declarations
     enum execution_type {PARALLEL, SIMULATED};
     
     typedef void(*kernel_fun_type)(size_t vLen, vertex_id_t* vertexIdx,
@@ -80,7 +71,7 @@ namespace graphlab {
 
     
     /**
-     * This gpu kernel wrapper    
+     * GPU kernel wrapper    
      */
     template<typename FunctorType>
     __global__ void gpu_kernel(vertex_id_t* vertexIds) {
@@ -152,22 +143,22 @@ namespace graphlab {
      * threads or use actual threads. 
      */
     gpu_engine(Graph& graph,
-                        size_t ncpus = 1,
-                        execution_type exec_type = THREADED) :
-      graph(graph),
-      ncpus( std::max(ncpus, size_t(1)) ),
-      exec_type(exec_type),
-      use_cpu_affinity(false),
-      scope_manager(graph, std::max(ncpus, size_t(1) ) ),
-      scheduler(this, graph, std::max(ncpus, size_t(1)) ),
-      update_counts(std::max(ncpus, size_t(1)), 0),
-      monitor(NULL),
-      shared_data(NULL),
-      start_time_millis(lowres_time_millis()),
-      timeout_millis(0),
-      last_check_millis(0),
-      task_budget(0),
-      active(false) { }
+               size_t ncpus = 1,
+               execution_type exec_type = THREADED)
+      : graph(graph),
+        ncpus( std::max(ncpus, size_t(1)) ),
+        exec_type(exec_type),
+        use_cpu_affinity(false),
+        scope_manager(graph, std::max(ncpus, size_t(1) ) ),
+        scheduler(this, graph, std::max(ncpus, size_t(1)) ),
+        update_counts(std::max(ncpus, size_t(1)), 0),
+        monitor(NULL),
+        shared_data(NULL),
+        start_time_millis(lowres_time_millis()),
+        timeout_millis(0),
+        last_check_millis(0),
+        task_budget(0),
+        active(false) { }
 
 
     //! Get the number of cpus

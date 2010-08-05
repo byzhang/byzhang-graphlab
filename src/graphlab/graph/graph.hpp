@@ -263,8 +263,8 @@ namespace graphlab {
     /** Find an edge */
     std::pair<bool, edge_id_t>
     find(vertex_id_t source, vertex_id_t target) const {
-      assert(source < in_edges.size());
-      assert(target < out_edges.size());
+      assert(source < out_edges.size());
+      assert(target < in_edges.size());
       // Check the base case that the souce or target have no edges
       if (in_edges[target].size() == 0 ||
           out_edges[source].size() == 0) {
@@ -1138,10 +1138,10 @@ namespace graphlab {
         source, destination, and data. */
     std::vector<edge> edges;
     
-    /** A map from src_vertex -> dest_vertex -> edge index */   
+    /** A map from dest_vertex -> in edge IDs */
     std::vector< std::vector<edge_id_t> >  in_edges;
     
-    /** A map from src_vertex -> dest_vertex -> edge index */   
+    /** A map from src_vertex -> out edge IDs */
     std::vector< std::vector<edge_id_t> >  out_edges;
     
     /** The vertex colors specified by the user. **/

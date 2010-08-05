@@ -40,15 +40,34 @@ FIND_PACKAGE(Boost 1.39 COMPONENTS
 
 
 
-# # Use CUDA libraries (required only for GPU GraphLab)
-find_package(CUDA)
-# If CUDA libraries were not found, ignore commands:
-#   cuda_add_executable
+# CUDA libraries (required only for GPU code)
+#   The SDK and the Thrust library must be installed.
+#   If CUDA libraries are not found, ignore the following commands:
+#     cuda_add_executable
+find_package(CUDA QUIET)
+# Check for the CUDA SDK.
+IF(CUDA_FOUND)
+  IF(CUDA_SDK_ROOT_DIR)
+    message(STATUS "CUDA SDK found: " ${CUDA_SDK_ROOT_DIR})
+  ELSE(CUDA_SDK_ROOT_DIR)
+    message(STATUS "CUDA_SDK_ROOT_DIR not found! CUDA will be set to not found. Install the SDK, or define the directory explicitly if it exists.")
+    set(CUDA_FOUND "")
+  ENDIF(CUDA_SDK_ROOT_DIR)
+ENDIF(CUDA_FOUND)
+# Check for CUDA Thrust.
+IF(CUDA_FOUND)
+  find_package(CUDAThrust QUIET)
+  IF(CUDATHRUST_FOUND)
+    message(STATUS "CUDA Thrust found: " ${CUDATHRUST_INCLUDE_DIR})
+  ELSE(CUDATHRUST_FOUND)
+    message(STATUS "CUDA Thrust not found! CUDA will be set to not found. Install CUDA Thrust, or make sure that Thrust may be found in the CUDA include directories or in default include directories.")
+    set(CUDA_FOUND "")
+  ENDIF(CUDATHRUST_FOUND)
+ENDIF(CUDA_FOUND)
 IF(CUDA_FOUND)
   message(STATUS "CUDA Found: " ${CUDA_VERSION})
-  link_libraries(${CUDA_CUBLAS_LIBRARIES})
 ELSE(CUDA_FOUND)
-  message(STATUS "CUDA Not Found! GPU Executables will not be compiled.")
+  message(STATUS "CUDA Not Found! GPU executables will not be compiled.")
   macro(CUDA_ADD_EXECUTABLE cuda_target)
   endmacro(CUDA_ADD_EXECUTABLE cuda_target)
 ENDIF(CUDA_FOUND)

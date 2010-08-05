@@ -1,0 +1,75 @@
+
+GPU GraphLab Notes
+------------------
+
+To do:
+ - Once bigbrogpu is up again,
+    - Upload my changes to graphlab_gpu branch.
+    - Run cuda_test.
+ - Write gpu_graph, and test it without the rest of GraphLab.
+   See how far we can stretch classes on the GPU, especially w.r.t.
+   loading data and constructors.
+ - Write gpu_scope.
+
+To do at some point:
+ - Include an allocator template argument which lets us debug completely
+   on the CPU.
+
+Classes:
+  gpu_callback
+  gpu_engine
+  gpu_graph: Data structure in global memory.
+  gpu_scope: Local to each thread; stores pointers to gpu_graph.
+  pagerank_gpu_program
+
+GPU Scope:
+ - The update function for a vertex v should have quick access to:
+    - v's VertexData (VertexData* or VertexData)
+    - v's in edges (gpu_vector<edge_id_t>)
+    - v's out edges (gpu_vector<edge_id_t>)
+
+Graph representation:
+ - GPU GraphLab:
+    - types:
+       - vertex_id_t, edge_id_t (same as CPU)
+       - edge_list (hopefully same as CPU)
+       - edge (different from CPU)
+          - vertex_id_t _source;
+          - vertex_id_t _target;
+       - VertexData
+       - EdgeData
+       - gpu_vector<edge_id_t>
+          - size_t    _n_elements;
+          - edge_id_t _data;
+    - private data:
+       - size_t nvertices;
+       - VertexData* vertices;
+       - size_t nedges;
+       - edge* edges;
+       - EdgeData* edge_data_list;
+       - size_t n_in_edges;
+       - gpu_vector<edge_id_t>* in_edges;
+       - size_t n_out_edges;
+       - gpu_vector<edge_id_t>* out_edges;
+ - CPU GraphLab:
+    - types:
+       - edge
+          - vertex_id_t _source;
+          - vertex_id_t _target;
+          - EdgeData _data;
+       - edge_list
+          - const edge_id_t* begin_ptr;
+          - const edge_id_t* end_ptr;
+       - typedef uint32_t vertex_id_t;
+       - typedef uint32_t edge_id_t;
+       - typedef uint8_t vertex_color_type;
+    - private data:
+       - std::vector<VertexData> vertices;
+       - std::vector<edge> edges;
+       - std::vector< std::vector<edge_id_t> >  in_edges;
+         (map from dest_vertex -> in edge IDs)
+       - std::vector< std::vector<edge_id_t> >  out_edges;
+         (map from src_vertex -> out edge IDs)
+       - std::vector< vertex_color_type > vcolors;
+         (vertex colors specified by the user)
+       - bool finalized;

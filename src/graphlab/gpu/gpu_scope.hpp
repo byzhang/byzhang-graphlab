@@ -1,27 +1,26 @@
 #ifndef GRAPHLAB_GPU_SCOPE_HPP
 #define GRAPHLAB_GPU_SCOPE_HPP
 
-#include <graphlab/graph/graph.hpp>
-
-
+#include <graphlab/gpu/gpu_graph.hpp>
 
 namespace graphlab {
+
   /**
-   * This defines a general scope type 
+   * This defines a general scope type for GPUs.
    */
   template<typename GPUProgram>
   class gpu_scope {
+
   public:
     typedef typename GPUProgram::vertex_data_type vertex_data_type;
     typedef typename GPUProgram::edge_data_type edge_data_type;
+    typedef gpu_graph<vertex_data_type, edge_data_type> gpu_graph_type;
 
-    
   public:
 
-    __device__ gpu_scope() { }
-    
+    __device__ gpu_scope(gpu_graph_type* graph_)
+      : graph_(graph_) { }
 
-  
     /**
      * \brief Returns the vertex id of the base vertex in this scope.
      *
@@ -29,12 +28,10 @@ namespace graphlab {
      * vertex of the scope.  The base vertex is the vertex that the
      * update function is being applied to.
      */
-    __device__ vertex_id_t vertex() { }
-
+    __device__ vertex_id_t vertex() const { }
 
     /** Get the number of vertices */
-    __device__ size_t num_vertices() { }
-
+    __device__ size_t num_vertices() const { }
 
     /** 
      * \brief edge lookup from source target pair to edge id.
@@ -102,20 +99,16 @@ namespace graphlab {
     //! get the target vertex of the edge id argument
     __device__ vertex_id_t target(edge_id_t edge_id) const { }
 
-
-
-
-
     /** Get a reference to the vertex data */
     __device__ vertex_data_type& vertex_data() { }
     __device__ const vertex_data_type& const_vertex_data() const { }
 
-    /// Direct calls to access edge data
+    //! Direct calls to access edge data
     __device__
     edge_data_type& edge_data(edge_id_t eid) { }
+
     __device__
     const edge_data_type& const_edge_data(edge_id_t eid) const { }
-    
 
     __device__
     const vertex_data_type& neighbor_vertex_data(vertex_id_t vertex) const {
@@ -128,9 +121,29 @@ namespace graphlab {
     __device__
     vertex_data_type& neighbor_vertex_data(vertex_id_t vertex) {
     }
-    
 
-  }; // end of ext_locked_scope
+    // PRIVATE DATA
+    //==========================================================================
+  private:
+
+    /**
+     * Pointer to graph in global memory.
+     * @todo This is a waste since the pointer is stored in shared memory
+     *       (as a kernel argument), but I'm not sure how to access
+     *       kernel arguments from within a class.
+     */
+    gpu_graph_type* graph_;
+
+    //! Data for the base vertex for this scope.
+    VertexData vertex_data_;
+
+    //! Vector of in edges for the base vertex for this scope.
+    gpu_vector<edge_id_t> in_edges_;
+
+    //! Vector of out edges for the base vertex for this scope.
+    gpu_vector<edge_id_t> out_edges_;
+
+  }; // end of gpu_scope
 
 } // end of graphlab namespace
 

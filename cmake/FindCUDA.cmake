@@ -596,6 +596,9 @@ find_path(CUDA_SDK_ROOT_DIR common/inc/cutil.h
   "$ENV{NVSDKCUDA_ROOT}"
   "[HKEY_LOCAL_MACHINE\\SOFTWARE\\NVIDIA Corporation\\Installed Products\\NVIDIA SDK 10\\Compute;InstallDir]"
   "/Developer/GPU\ Computing/C"
+  "/root/NVIDIA_GPU_Computing_SDK/C"
+  "/usr/NVIDIA_GPU_Computing_SDK/C"
+  "/usr0/NVIDIA_GPU_Computing_SDK/C"
   )
 
 # Keep the CUDA_SDK_ROOT_DIR first in order to be able to override the
