@@ -1,10 +1,20 @@
 
+/**
+ * \file cuda_test.cpp  Simple test of CUDA.
+ *
+ * This tests:
+ *  - CUBLAS
+ *  - Thrust
+ */
+
 #include <cassert>
 #include <iostream>
 
 #include <cuda_runtime.h>
+
 #include <thrust/device_vector.h>
 #include <thrust/host_vector.h>
+#include <thrust/reduce.h>
 
 #include <cublas.h>
 

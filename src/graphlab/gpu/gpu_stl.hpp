@@ -5,6 +5,8 @@
 #ifndef GRAPHLAB_GPU_STL_HPP
 #define GRAPHLAB_GPU_STL_HPP
 
+#include <stdexcept>
+
 namespace graphlab {
 
   /**
@@ -14,12 +16,14 @@ namespace graphlab {
   struct pair {
     T1 first;
     T2 second;
+    pair() : first(), second() { }
     pair(const T1& first, const T2& second)
       : first(first), second(second) { }
   }; // struct pair
 
   //! Like std::make_pair
   template <typename T1, typename T2>
+  pair<T1,T2>
   make_pair(const T1& first, const T2& second) {
     return pair<T1,T2>(first, second);
   }
@@ -68,7 +72,9 @@ namespace graphlab {
      *       contains before you free this vector.
      */
     void free() {
-      assert(data);
+      if (!data) {
+        throw std::runtime_error("gpu_vector::free() was called, but the instance's data pointer was NULL.");
+      }
       gpu_free(data);
       n = 0;
       data = NULL;
@@ -92,7 +98,7 @@ namespace graphlab {
 
     /** Get a const iterator to the end. */
     const_iterator end() const {
-      return T + n;
+      return data + n;
     }
 
     /** Get a mutable iterator to the beginning. */
@@ -102,7 +108,7 @@ namespace graphlab {
 
     /** Get a mutable iterator to the end. */
     iterator end() {
-      return T + n;
+      return data + n;
     }
 
   }; // class gpu_vector

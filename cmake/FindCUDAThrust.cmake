@@ -62,7 +62,7 @@ if(CUDA_FOUND)
   if(CUDATHRUST_INCLUDE)
     # Thrust was found.
     set(CUDATHRUST_FOUND TRUE)
-    set (CUDATHRUST_INCLUDE_DIRS ${CUDATHRUST_INCLUDE})
+    set (CUDATHRUST_INCLUDE_DIR ${CUDATHRUST_INCLUDE})
   else(CUDATHRUST_INCLUDE)
     # Thrust was not found.
     set(CUDATHRUST_FOUND FALSE)
@@ -76,7 +76,7 @@ if(CUDA_FOUND)
   endif(CUDATHRUST_INCLUDE)
 else(CUDA_FOUND)
   if(NOT CUDATHRUST_FIND_QUIETLY)
-    message(STATUS "CUDA must be found before CMake looks for Thrust!");
+    message(STATUS "CUDA must be found before CMake looks for Thrust!")
   endif(NOT CUDATHRUST_FIND_QUIETLY)
   set(CUDATHRUST_FOUND FALSE)
 endif(CUDA_FOUND)

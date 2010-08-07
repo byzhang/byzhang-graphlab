@@ -44,6 +44,8 @@ FIND_PACKAGE(Boost 1.39 COMPONENTS
 #   The SDK and the Thrust library must be installed.
 #   If CUDA libraries are not found, ignore the following commands:
 #     cuda_add_executable
+set(CUDA_NVCC_FLAGS_Debug "-g -D_DEBUG -G")
+mark_as_advanced(CUDA_NVCC_FLAGS_Debug)
 find_package(CUDA QUIET)
 # Check for the CUDA SDK.
 IF(CUDA_FOUND)

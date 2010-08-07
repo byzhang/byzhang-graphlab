@@ -24,6 +24,10 @@ int main(int argc, char* argv[]) {
   cpu_g.add_edge(1, 2, 3);
   cpu_g.add_edge(1, 3, 4);
 
+  //  gpu_graph_type gpu_g(create_gpu_graph<vertex_data,edge_data>(cpu_g));
+  gpu_graph_type gpu_g(create_gpu_graph(cpu_g));
+  destroy_gpu_graph(gpu_g);
+
   return EXIT_SUCCESS;
 }
 

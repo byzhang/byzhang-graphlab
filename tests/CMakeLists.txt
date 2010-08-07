@@ -42,8 +42,6 @@ add_dist_executable(dist_engine_test3 dist_engine_test3.cpp)
 add_dist_executable(dist_term_test dist_term_test.cpp)
 add_dist_executable(distributed_shared_data_test distributed_shared_data_test.cpp)
 
-# cuda_add_executable(cuda_test cuda_test.cpp)
-
 # add_executable(itppserialize itppserialize.cpp)
 #target_link_libraries(itppserialize  itpp)
 
@@ -51,3 +49,28 @@ add_dist_executable(distributed_shared_data_test distributed_shared_data_test.cp
 add_executable(partransform partransform.cpp)
 
 add_executable(clopts command_line_options.cpp)
+
+
+# Beginning of CUDA CMake stuff
+#==========================================================================
+IF(CUDA_FOUND)
+
+# CUDA: Define libraries and include directories
+#--------------------------------------------------------------------------
+
+CUDA_INCLUDE_DIRECTORIES(${CUDA_INCLUDE_DIRS})
+
+include_directories(${CUDA_SDK_ROOT_DIR}/common/inc
+  ${CMAKE_CURRENT_SOURCE_DIR}/common)
+
+# CUDA: Define executables
+#--------------------------------------------------------------------------
+
+cuda_add_executable(cuda_test cuda_test.cu)
+target_link_libraries(cuda_test  ${CUDA_CUBLAS_LIBRARIES})
+#cuda_add_executable(gpu_graph_test gpu_graph_test.cpp)
+#target_link_libraries(gpu_graph_test  ${CUDA_CUBLAS_LIBRARIES})
+
+#==========================================================================
+# End of CUDA CMake stuff
+ENDIF(CUDA_FOUND)

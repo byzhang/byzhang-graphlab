@@ -3,12 +3,11 @@ GPU GraphLab Notes
 ------------------
 
 To do:
- - Once bigbrogpu is up again,
-    - Upload my changes to graphlab_gpu branch.
-    - Run cuda_test.
- - Write gpu_graph, and test it without the rest of GraphLab.
-   See how far we can stretch classes on the GPU, especially w.r.t.
-   loading data and constructors.
+ - Test gpu_graph.
+    - Debug it: Figure out why free() is causing problems.
+    - Use a simple kernel to do timing tests with gpu_graph.
+      See how far we can stretch classes on the GPU, especially w.r.t.
+      loading data and constructors.
  - Write gpu_scope.
 
 To do at some point:

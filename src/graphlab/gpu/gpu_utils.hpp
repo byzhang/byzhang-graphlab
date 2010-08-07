@@ -6,6 +6,9 @@
 #define GRAPHLAB_GPU_UTILS_HPP
 
 #include <sstream>
+#include <stdexcept>
+
+#include <cuda_runtime.h>
 
 namespace graphlab {
 
@@ -23,7 +26,7 @@ namespace graphlab {
    * @param e    Error code
    * @param msg  Error message
    */
-  inline void cudaCheck(cudaError_t e, const std::string& msg) {
+  void cudaCheck(cudaError_t e, const std::string& msg) {
     if (e != cudaSuccess)
       throw std::runtime_error("CUDA Error (" + to_string(e) + "): " + msg);
   }
@@ -64,8 +67,20 @@ namespace graphlab {
    */
   template <typename T>
   void copy_host_to_device(T* h_ptr, size_t n, T* d_ptr) {
-    cudaCheck(cudaMemcpy(d_ptr, h_ptr, n, cudaMemcpyHosttoDevice),
+    cudaCheck(cudaMemcpy(d_ptr, h_ptr, n, cudaMemcpyHostToDevice),
               "copy_host_to_device failed");
+  }
+
+  /**
+   * Copy GPU memory to the CPU (n items of type T from d_ptr to h_ptr).
+   * This throws a std::runtime_error if the free fails.
+   *
+   * @param  d_ptr  Device pointer to allocated memory.
+   */
+  template <typename T>
+  void copy_device_to_host(T* d_ptr, size_t n, T* h_ptr) {
+    cudaCheck(cudaMemcpy(h_ptr, d_ptr, n, cudaMemcpyDeviceToHost),
+              "copy_device_to_host failed");
   }
 
 } // end of namespace graphlab

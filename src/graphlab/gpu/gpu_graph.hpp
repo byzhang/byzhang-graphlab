@@ -36,12 +36,22 @@
 
 #include <graphlab/gpu/gpu_errors.hpp>
 #include <graphlab/gpu/gpu_stl.hpp>
+#include <graphlab/gpu/gpu_utils.hpp>
 
 #include <graphlab/macros_def.hpp>
 
 namespace graphlab {
-  
-  //  template<typename VertexData, typename EdgeData> class gpu_graph;
+
+  // Pre-declarations
+  template <typename VertexData, typename EdgeData>
+  class gpu_graph;
+
+  template <typename VertexData, typename EdgeData>
+  gpu_graph<VertexData, EdgeData>
+  create_gpu_graph(const graph<VertexData, EdgeData>& g);
+
+  template <typename VertexData, typename EdgeData>
+  void destroy_gpu_graph(gpu_graph<VertexData, EdgeData>& g);
 
   // CLASS GPU_GRAPH ===========================================================
   /**
@@ -167,7 +177,10 @@ namespace graphlab {
 
     friend
     gpu_graph<VertexData, EdgeData>
-    create_gpu_graph(const graph<VertexData, EdgeData>& g);
+    create_gpu_graph<>(const graph<VertexData, EdgeData>& g);
+
+    friend
+    void destroy_gpu_graph<>(gpu_graph<VertexData, EdgeData>& g);
 
     // PUBLIC METHODS
     //==========================================================================
@@ -208,7 +221,7 @@ namespace graphlab {
     /** Get the number of in edges */
     size_t num_in_neighbors(vertex_id_t v) const {
       if (v < num_vertices()) {
-        return in_edges[v].size();
+        return in_edges_[v].size();
       } else {
         error_code_[0] = gpu_errors::OUT_OF_BOUNDS;
         return (size_t)(-1);
@@ -218,7 +231,7 @@ namespace graphlab {
     /** get the number of out edges */
     size_t num_out_neighbors(vertex_id_t v) const  {
       if (v < num_vertices()) {
-        return out_edges[v].size();
+        return out_edges_[v].size();
       } else {
         error_code_[0] = gpu_errors::OUT_OF_BOUNDS;
         return (size_t)(-1);
@@ -261,7 +274,7 @@ namespace graphlab {
      */
     edge_id_t rev_edge_id(edge_id_t eid) const {
       if (eid < edges_.size()) {
-        edge e(edges[eid].first);
+        edge e(edges_[eid].first);
         return edge_id(e.target(), e.source());
       } else {
         error_code_[0] = gpu_errors::OUT_OF_BOUNDS;
@@ -429,7 +442,6 @@ namespace graphlab {
   create_gpu_graph(const graph<VertexData, EdgeData>& g) {
 
     typedef typename gpu_graph<VertexData, EdgeData>::edge edge;
-    typedef typename gpu_graph<VertexData, EdgeData>::edge_list edge_list;
     gpu_graph<VertexData, EdgeData> gpug;
 
     // Create vertices_ and edges_.
@@ -491,12 +503,12 @@ namespace graphlab {
 
   template<typename VertexData, typename EdgeData>
   void
-  destroy_gpu_graph(const gpu_graph<VertexData, EdgeData>& g) {
+  destroy_gpu_graph(gpu_graph<VertexData, EdgeData>& g) {
     size_t nverts(g.num_vertices());
 
     // Free vertices_, edges_.
-    vertices_.free();
-    edges_.free();
+    g.vertices_.free();
+    g.edges_.free();
 
     // Free in_edges_, out_edges_.
     gpu_vector<pair<edge_id_t,vertex_id_t> >* h_inout_edges =
