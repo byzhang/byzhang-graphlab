@@ -170,7 +170,9 @@ size_t compute_tree_width(const vset_map& var2factors_const,
       const vertex_set& factors = var2factors[v];
       foreach(vertex_id_t fid, factors)
         fill_edges *= factor2vars[fid].size();
+      elim_order.update(v, -fill_edges);
     }
+
 
   }
   return tree_width;

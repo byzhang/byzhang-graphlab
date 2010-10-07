@@ -5,6 +5,14 @@
 #include <string>
 #include <graphlab.hpp>
 #include <graphlab/serialization/serialization_includes.hpp>
+#include <graphlab/distributed/graph/distributed_graph.hpp>
+#include <graphlab/distributed/distributed_control.hpp>
+#include <graphlab/distributed/distributed_shared_data.hpp>
+#include <graphlab/distributed/distributed_engine.hpp>
+#include <graphlab/distributed/distributed_scheduler_wrapper.hpp>
+#include <graphlab/distributed/distributed_shared_data.hpp>
+#include <graphlab/distributed/distributed_round_robin_scheduler.hpp>
+
 #include <boost/program_options.hpp>
 #define cimg_display 0
 #define cimg_use_jpeg 1
@@ -19,15 +27,16 @@ using namespace cimg_library;
 const size_t TEMPERATURE = 1;
 
 struct vertexdata{ 
-  vertexdata(double vweight, uint64_t id)
-      :id(id), counter(0) {}
+  vertexdata() { }
+  vertexdata(double vweight, uint64_t id) :id(id){}
   uint64_t id;
-  uint16_t counter;
 };
-typedef graphlab::graph<vertexdata, float> graph_type;
+SERIALIZABLE_POD(vertexdata);
+
+typedef graphlab::distributed_graph<vertexdata, float> graph_type;
 typedef graphlab::types<graph_type> gl_types;
 
-
+size_t nmachines;
 std::string imagepath = "/mnt/bigbrofs/usr3/ylow/backups/Desktop/make3d/videos/t7/";
 size_t width = 480/2;
 size_t height = 640/2;
@@ -97,6 +106,7 @@ void fromvertexid(size_t vid, size_t &img, size_t &x, size_t &y) {
 }
 
 
+
 CImg<unsigned char> RGBtoGrayScale(const CImg<unsigned char> &im) {
   CImg<unsigned char> grayImage(im.width(),im.height(),im.depth(),1,0);
   if (im.spectrum() == 3) {
@@ -133,7 +143,7 @@ void tf(float &f) {
 
 void construct_graph(gl_types::graph& g) {
   CImg<float> everything(width,height,numimgs, 1);
-
+  double imgspermachine = double(numimgs)/nmachines;
   for (size_t i = 0;i < numimgs; ++i) {
     char cfilename[1024];
     sprintf(cfilename,"%s%d.jpg", imagepath.c_str(),(i+1)*step);
@@ -148,7 +158,10 @@ void construct_graph(gl_types::graph& g) {
       for (size_t k = 0;k < height; ++k) {
         uint64_t uint64id = gl_types::random::rand_int(UINT64_MAX - 1);;
         //uint64_t uint64id = 0;
-        g.add_vertex(vertexdata(0.0, uint64id));
+        size_t atmachine = size_t(i / imgspermachine);
+        if (atmachine >= nmachines) atmachine = nmachines - 1;
+        g.add_vertex(atmachine,
+                     vertexdata(0.0, uint64id));
       }
     }
   }
@@ -187,7 +200,7 @@ void construct_graph(gl_types::graph& g) {
   std::cout << frame.width() << " " << frame.height() << " " << frame.depth()<< std::endl;
   if (diagonals) {
     for (size_t i = 0;i < numimgs; ++i) {
-      if (i % 10 == 0) std::cout << i << std::endl;
+      if (i % 10) std::cout << i << std::endl;
       for (size_t j = 0;j < width; ++j) {
         for (size_t k = 0;k < height; ++k) {
           
@@ -195,13 +208,13 @@ void construct_graph(gl_types::graph& g) {
             for (size_t jj = (j>0?j-1:0) ; jj <= (j<width-1?j+1:j); ++jj) {
               for (size_t kk = (k>0?k-1:0) ; kk <= (k<height-1?k+1:k); ++kk) {
                 if (i==ii && j==jj && k==kk) continue;
-                else if (tovertexid(i,j,k) > tovertexid(ii,jj,kk)){
+                else {
                   float d = 0;
                   //if (i != ii) d += frame(j,k,i) * frame(j,k,i) ;
                   if (i != ii) d += 3;
                   if (j != jj) d += vert(j,k,i) * vert(j,k,i) ;
                   if (k != kk) d += horz(j,k,i) * horz(j,k,i) ;
-                  g.add_edge(tovertexid(i,j,k),tovertexid(ii,jj,kk), 2 * sqrt(d));
+                  g.add_edge(tovertexid(i,j,k),tovertexid(ii,jj,kk), sqrt(d));
                 }
               }
             }
@@ -218,8 +231,7 @@ void construct_graph(gl_types::graph& g) {
           for (size_t ii = (i>0?i-1:0) ; ii <= (i<numimgs-1?i+1:i); ++ii) {
             for (size_t jj = (j>0?j-1:0) ; jj <= (j<width-1?j+1:j); ++jj) {
               for (size_t kk = (k>0?k-1:0) ; kk <= (k<height-1?k+1:k); ++kk) {
-                if ((i==ii) + (j==jj) + (k==kk) == 2 
-                  && (tovertexid(i,j,k) > tovertexid(ii,jj,kk))){
+                if ((i==ii) + (j==jj) + (k==kk) == 2) {
                   float d = 0;
                   //if (i != ii) d += frame(j,k,i) * frame(j,k,i) ;
                   if (i != ii) d += 3;
@@ -234,7 +246,6 @@ void construct_graph(gl_types::graph& g) {
       }
     } 
   }
-  g.finalize();
 } // End of construct graph
 
 
@@ -244,13 +255,11 @@ void cluster_update(gl_types::iscope& scope,
                     gl_types::ishared_data* shared_data) {
   
   vertexdata &curvertexdata = scope.vertex_data();
-  if (curvertexdata.counter >= countermax) return;
-  
   uint64_t oldid = curvertexdata.id;
     // Get the in and out edges by reference
   graphlab::edge_list in_edges = scope.in_edge_ids();
   graphlab::edge_list out_edges = scope.out_edge_ids();
-  double temperature = shared_data->get_constant(TEMPERATURE).as<double>();
+  double temperature = shared_data->get(TEMPERATURE).as<double>();
   // grab 
   std::map<uint64_t, double> assignmentpreferences;
   
@@ -332,21 +341,38 @@ void cluster_update(gl_types::iscope& scope,
     ++i;
   }
 
-  curvertexdata.counter++;
-  if (curvertexdata.id != oldid) {
-    foreach(graphlab::edge_id_t eid, out_edges) {
-      scheduler.add_task(gl_types::update_task(scope.target(eid), cluster_update), 10.0); 
-    }
-    foreach(graphlab::edge_id_t eid, in_edges) {
-      scheduler.add_task(gl_types::update_task(scope.source(eid), cluster_update), 10.0); 
-    }
-  }
-
 }
 
 
-
-
+std::vector<graphlab::vertex_id_t> get_neighbors(graphlab::vertex_id_t v) {
+  std::vector<graphlab::vertex_id_t> ret;
+  size_t i,j,k;
+  fromvertexid(v, i,j,k);
+  if (diagonals) {
+    for (size_t ii = (i>0?i-1:0) ; ii <= (i<numimgs-1?i+1:i); ++ii) {
+      for (size_t jj = (j>0?j-1:0) ; jj <= (j<width-1?j+1:j); ++jj) {
+        for (size_t kk = (k>0?k-1:0) ; kk <= (k<height-1?k+1:k); ++kk) {
+          if (i==ii && j==jj && k==kk) continue;
+          else {
+            ret.push_back(tovertexid(ii,jj,kk));
+          }
+        }
+      }
+    }
+  }
+  else {
+    for (size_t ii = (i>0?i-1:0) ; ii <= (i<numimgs-1?i+1:i); ++ii) {
+      for (size_t jj = (j>0?j-1:0) ; jj <= (j<width-1?j+1:j); ++jj) {
+        for (size_t kk = (k>0?k-1:0) ; kk <= (k<height-1?k+1:k); ++kk) {
+          if ((i==ii) + (j==jj) + (k==kk) == 2) {
+            ret.push_back(tovertexid(ii,jj,kk));
+          }
+        }
+      }
+    }
+  }  
+  return ret;
+}
 
 size_t uf_find(std::vector<size_t> &unionfind, size_t a) {
   if (unionfind[a] == a) return a;
@@ -360,7 +386,7 @@ void uf_union(std::vector<size_t> &unionfind, size_t a, size_t b) {
   uf_find(unionfind, b);
   unionfind[b] = aroot;
 }
-void renumber_graph(gl_types::graph &graph) {
+size_t renumber_graph(gl_types::graph &graph) {
   std::vector<size_t> unionfind(graph.num_vertices());
   
   for (size_t v = 0; v < graph.num_vertices(); ++v) {
@@ -368,226 +394,266 @@ void renumber_graph(gl_types::graph &graph) {
   }
   for (size_t v = 0; v < graph.num_vertices(); ++v) {
     uint64_t vpartid = graph.vertex_data(v).id;
-    graphlab::edge_list in_edges = graph.in_edge_ids(v);
-    graphlab::edge_list out_edges = graph.out_edge_ids(v);
-    foreach(graphlab::edge_id_t ineid, in_edges) {   
-      uint64_t nbrid = graph.source(ineid);
+    foreach(uint64_t nbrid, get_neighbors(v)) {   
       if (vpartid == graph.vertex_data(nbrid).id) {
         uf_union(unionfind, v, nbrid);
       }
     }
   }
+  std::set<graphlab::vertex_id_t> partids;
   for (size_t v = 0; v < graph.num_vertices(); ++v) {
-    graph.vertex_data(v).id = uf_find(unionfind, v);
+    if (graph.vertex_data(v).id != uf_find(unionfind, v)) {
+      graph.vertex_data(v).id = uf_find(unionfind, v);
+      graph.broadcast_vertex_data(v);
+    }
+    partids.insert(graph.vertex_data(v).id);
   }
-
+  return partids.size();
 }
 
 int main(int argc, char** argv) {
   // create graph
+
+  graphlab::distributed_control dc(&argc, &argv);
+  dc.init_message_processing(4);
+  dc.barrier();
+  nmachines = dc.numprocs();
+  // create the distributed data structures
+
+  std::cout << "nmachines..." << nmachines << std::endl;
   graphlab::command_line_options opts;
   
   if (parse_command_line(opts, argc,argv) == false) return 0;
-  gl_types::graph graph;
+  gl_types::graph graph(dc);
+  dc.barrier();
   construct_graph(graph);
+  graph.finalize();
   std::cout << "starting partitioning..." << std::endl;
 
   
-  gl_types::thread_shared_data shared_data;
-  shared_data.set_constant(TEMPERATURE, double(1.0));
-  
-  // create a permutation of vertices so that we don't update in a 
-  // fixed swwp
-  std::vector<size_t> perm;
-  for (size_t i = 0;i < graph.num_vertices(); ++i) perm.push_back(i);
-  std::random_shuffle(perm.begin(), perm.end());
+  graphlab::distributed_shared_data<gl_types::graph> shared_data(dc);
+
+ 
+    // create the engine
+  gl_types::iengine *engine = NULL;
+
+  {
+    graphlab::distributed_engine<gl_types::graph,
+    graphlab::distributed_scheduler_wrapper<gl_types::graph, 
+    graphlab::distributed_round_robin_scheduler<gl_types::graph> > > *tengine = new graphlab::distributed_engine<gl_types::graph,
+    graphlab::distributed_scheduler_wrapper<gl_types::graph, 
+    graphlab::distributed_round_robin_scheduler<gl_types::graph> > >(dc, graph, opts.ncpus);
+    tengine->set_caching(true);
+    tengine->set_constant_edges(true);
+    tengine->set_vertex_scope_pushed_updates(true);
+    engine=tengine;
+    engine->set_default_scope(graphlab::scope_range::NULL_CONSISTENCY);
     
-  
-  // create the engine
-  gl_types::iengine *engine = opts.create_engine(graph);
-  
+  }
+
+  std::cout << graph.num_local_edges() << " Edges local" << std::endl;
+  dc.barrier();
   assert(engine != NULL);
   // set the shared data object
+  graphlab::vertex_id_t nv = 0;
   engine->set_shared_data_manager(&shared_data);
+  engine->get_scheduler().add_task_to_all(cluster_update, 1.0);
+  engine->get_scheduler().set_option(graphlab::scheduler_options::MAX_ITERATIONS, (void*)countermax);
+  engine->get_scheduler().set_option(graphlab::scheduler_options::DISTRIBUTED_CONTROL, (void*)&dc);
+  engine->get_scheduler().set_option(graphlab::scheduler_options::BARRIER, &nv);  
+
+  if (dc.procid() == 0) {
+    shared_data.atomic_set(TEMPERATURE, double(1.0));
+  }
+  
+  
+  dc.barrier();
+  graphlab::distributed_metrics::instance(&dc);
   graphlab::timer ti;
   ti.start();
+  size_t numparts = graph.num_vertices();
+  dc.barrier();
   for (size_t i  =0;i < iterations; ++i) {
-    if (i > 0) renumber_graph(graph);
-    double temp = double(tempnum / std::pow(tempbase,i));
-    //newidprior = newidprior * 2;
-    shared_data.set_constant(TEMPERATURE, temp);
-    std::set<uint64_t> numparts;
-    
-    for (size_t i = 0;i < perm.size(); ++i) {
-      graph.vertex_data(perm[i]).counter = 0;
-      numparts.insert(graph.vertex_data(perm[i]).id);
-      engine->get_scheduler().add_task(gl_types::update_task(perm[i], cluster_update), 10.0);
+    if (dc.procid() == 0) {
+      std::cout << "Renumbering..." << std::endl;
+      if (i > 0) numparts = renumber_graph(graph);
+      double temp = double(tempnum / std::pow(tempbase,i));
+      //newidprior = newidprior * 2;
+      shared_data.atomic_set(TEMPERATURE, temp);
+            
+      std::cout << "Starting to Anneal at temperature: " << temp << "\n";
+      std::cout << "Currently has " << numparts << " partitions" << std::endl;
     }
-    std::cout << "Starting to Anneal at temperature: " << temp << "\n";
-    std::cout << "Currently has " << numparts.size() << " partitions" << std::endl;
+    dc.barrier();
     engine->start();
+    dc.barrier();
+    std::cout << "Done!. Collecting." << std::endl;
+    graph.send_vertices_to_proczero();
+    dc.barrier();
   }
   
+  if (dc.procid() == 0) {
+    renumber_graph(graph);
     
-  renumber_graph(graph);
-  
-  
-  std::cout << "partitioning complete!" << std::endl;
-  CImg<unsigned char> superpixels(width,height,numimgs, 3,0);
-  CImg<uint32_t> superpixels_idx(width,height,numimgs,1,0);
-  std::map<uint64_t, uint32_t> renumber;
-  
-
-  // renumber from id to a sequential number
-  for (size_t v = 0; v < graph.num_vertices(); ++v) {
-    if (renumber.find(graph.vertex_data(v).id) == renumber.end()) {
-      size_t d = renumber.size();
-      renumber[graph.vertex_data(v).id] = d;
-    }
-  }
-  numparts = renumber.size();
-  std::cout << "partitioned into " << numparts << std::endl;
-  
-  std::vector<std::vector<unsigned char> > colors;
-  colors.resize(numparts);
-  for (size_t p = 0; p < numparts; ++p) {
-    colors[p].resize(3);
-    colors[p][0] = rand() % 255;
-    colors[p][1] = rand() % 255;
-    colors[p][2] = rand() % 255;
-  }
-
-
-  for (size_t v = 0; v < graph.num_vertices(); ++v) {
-    uint32_t partid = renumber[graph.vertex_data(v).id];
-    size_t i,j,k;
-    fromvertexid(v, i,j,k);
-    assert(i < numimgs);
-    assert(j < width);
-    assert(k < height);
-    superpixels_idx(j,k,i,0) = partid;
-    superpixels(j,k,i,0) = colors[partid][0];
-    superpixels(j,k,i,1) = colors[partid][1];
-    superpixels(j,k,i,2) = colors[partid][2];
-  }
-  std::cout << "making adjacency matrix." << std::endl;
-  width *= 2;
-  height *= 2;
-  superpixels_idx.resize(width, height);
-  CImg<uint32_t> superpixels_newidx(width,height,numimgs,1,0);
-  superpixels.normalize(0,255);
-  
-  
-  
-  std::cout << "writing files" << std::endl;
-  for (size_t i = 0;i < numimgs; ++i) {
     
-    char cfilename[1024];
-    sprintf(cfilename,"%s%d.jpg", imagepath.c_str(),(i+1)*step);
-    std::cout << "Loading " << cfilename << std::endl;
-    CImg<unsigned char> temp(cfilename);
-    CImg<unsigned char> temp2 = RGBtoGrayScale2(temp);
-    CImg<unsigned char> suppixslice = superpixels.get_slice(i);
-    suppixslice.resize_doubleXY();
-    char fname[1024];
-    sprintf(fname,"scut%d.jpg", int(i+1));
-    temp2 = temp2 / 2.0 + suppixslice / 2.0;
-    temp2.save(fname);
-  }
+    std::cout << "partitioning complete!" << std::endl;
+    CImg<unsigned char> superpixels(width,height,numimgs, 3,0);
+    CImg<uint32_t> superpixels_idx(width,height,numimgs,1,0);
+    std::map<uint64_t, uint32_t> renumber;
+    
 
-
-  // renumber partitions
-  std::map<size_t, size_t> newpartid2oldpartid;
-  std::map<size_t, size_t> newpartid2frame;
-  // frame, oldpartid pair to newpartid
-  std::map<std::pair<size_t, size_t>, size_t > partitions;
-  size_t nextpartid = 0;
-  
-  std::vector<uint32_t> newpart(width*height*numimgs, 0);
-  for (size_t v = 0; v < width*height*numimgs; ++v) {
-    size_t i,j,k;
-    fromvertexid(v, i,j,k);
-    std::pair<size_t, size_t> idx = std::make_pair(i, superpixels_idx(j,k,i));
-    if (partitions.find(idx) != partitions.end()) {
-      newpart[v] = partitions[idx];
+    // renumber from id to a sequential number
+    for (size_t v = 0; v < graph.num_vertices(); ++v) {
+      if (renumber.find(graph.vertex_data(v).id) == renumber.end()) {
+        size_t d = renumber.size();
+        renumber[graph.vertex_data(v).id] = d;
+      }
     }
-    else {
-      partitions[idx] = nextpartid;
-      newpartid2frame[nextpartid] = i;
-      newpartid2oldpartid[nextpartid] = superpixels_idx(j,k,i);
-      newpart[v] = nextpartid;
-      ++nextpartid;
+    numparts = renumber.size();
+    std::cout << "partitioned into " << numparts << std::endl;
+    
+    std::vector<std::vector<unsigned char> > colors;
+    colors.resize(numparts);
+    for (size_t p = 0; p < numparts; ++p) {
+      colors[p].resize(3);
+      colors[p][0] = rand() % 255;
+      colors[p][1] = rand() % 255;
+      colors[p][2] = rand() % 255;
     }
-    superpixels_newidx(j,k,i,0) = newpart[v];
-  }
-  // save the partitioning
-  std::ofstream fout(outfile.c_str(), std::ofstream::binary);
-  graphlab::oarchive oarc(fout);
-  oarc << newpart;
-
-  numparts  = nextpartid;
 
 
-
-  // generate the superpixels adjacency structure
-  std::vector<std::vector<size_t> > adjlist;
-  adjlist.resize(numparts);
-  
-  std::vector<std::set<size_t> > allnbrs;
-  allnbrs.resize(numparts);
-  for(size_t f = 0;f < numimgs; ++f) {
-    CImg<uint32_t> prevfrm;
-    if (f > 0) prevfrm = superpixels_newidx.get_shared_plane(f-1);
-    CImg<uint32_t> frm = superpixels_newidx.get_shared_plane(f);
-    CImg<uint32_t> nextfrm;
-    if (f <numimgs-1) nextfrm= superpixels_newidx.get_shared_plane(f+1);
-    std::set<size_t> nbrs;
-    cimg_forXY(frm,X,Y) {
-      size_t i = frm(X,Y);
-      if (X>0) allnbrs[i].insert(frm(X-1,Y));
-      if (Y>0) allnbrs[i].insert(frm(X,Y-1));
-      if (X<superpixels_newidx.width()-1) allnbrs[i].insert(frm(X+1,Y));
-      if (Y<superpixels_newidx.height()-1) allnbrs[i].insert(frm(X,Y+1));
-      if (f>0) allnbrs[i].insert(prevfrm(X,Y));
-      if (f<numimgs-1) allnbrs[i].insert(nextfrm(X,Y));
+    for (size_t v = 0; v < graph.num_vertices(); ++v) {
+      uint32_t partid = renumber[graph.vertex_data(v).id];
+      size_t i,j,k;
+      fromvertexid(v, i,j,k);
+      assert(i < numimgs);
+      assert(j < width);
+      assert(k < height);
+      superpixels_idx(j,k,i,0) = partid;
+      superpixels(j,k,i,0) = colors[partid][0];
+      superpixels(j,k,i,1) = colors[partid][1];
+      superpixels(j,k,i,2) = colors[partid][2];
     }
-  }
-  
-  for (size_t i = 0; i < numparts;++i) {
-    size_t frame = newpartid2frame[i];
-    CImg<uint32_t> frm = superpixels_newidx.get_shared_plane(frame);
-    std::set<size_t> nbrs = allnbrs[i];
-    nbrs.erase(i);
-    // add the cross frames
-  /*  std::pair<size_t, size_t> pr = std::make_pair(frame + 1, newpartid2oldpartid[i]);
-    if (partitions.find(pr) != partitions.end()) {
-      nbrs.insert(partitions[pr]);
+    std::cout << "making adjacency matrix." << std::endl;
+    width *= 2;
+    height *= 2;
+    superpixels_idx.resize(width, height);
+    CImg<uint32_t> superpixels_newidx(width,height,numimgs,1,0);
+    superpixels.normalize(0,255);
+    
+    
+    
+    std::cout << "writing files" << std::endl;
+    for (size_t i = 0;i < numimgs; ++i) {
+      
+      char cfilename[1024];
+      sprintf(cfilename,"%s%d.jpg", imagepath.c_str(),(i+1)*step);
+      std::cout << "Loading " << cfilename << std::endl;
+      CImg<unsigned char> temp(cfilename);
+      CImg<unsigned char> temp2 = RGBtoGrayScale2(temp);
+      CImg<unsigned char> suppixslice = superpixels.get_slice(i);
+      suppixslice.resize_doubleXY();
+      char fname[1024];
+      sprintf(fname,"scut%d.jpg", int(i+1));
+      temp2 = temp2 / 2.0 + suppixslice / 2.0;
+      temp2.save(fname);
     }
-    pr = std::make_pair(frame - 1, newpartid2oldpartid[i]);
-    if (partitions.find(pr) != partitions.end()) {
-      nbrs.insert(partitions[pr]);
+
+
+    // renumber partitions
+    std::map<size_t, size_t> newpartid2oldpartid;
+    std::map<size_t, size_t> newpartid2frame;
+    // frame, oldpartid pair to newpartid
+    std::map<std::pair<size_t, size_t>, size_t > partitions;
+    size_t nextpartid = 0;
+    
+    std::vector<uint32_t> newpart(width*height*numimgs, 0);
+    for (size_t v = 0; v < width*height*numimgs; ++v) {
+      size_t i,j,k;
+      fromvertexid(v, i,j,k);
+      std::pair<size_t, size_t> idx = std::make_pair(i, superpixels_idx(j,k,i));
+      if (partitions.find(idx) != partitions.end()) {
+        newpart[v] = partitions[idx];
+      }
+      else {
+        partitions[idx] = nextpartid;
+        newpartid2frame[nextpartid] = i;
+        newpartid2oldpartid[nextpartid] = superpixels_idx(j,k,i);
+        newpart[v] = nextpartid;
+        ++nextpartid;
+      }
+      superpixels_newidx(j,k,i,0) = newpart[v];
+    }
+    // save the partitioning
+    std::ofstream fout(outfile.c_str(), std::ofstream::binary);
+    graphlab::oarchive oarc(fout);
+    oarc << newpart;
+
+    numparts  = nextpartid;
+
+
+
+    // generate the superpixels adjacency structure
+    std::vector<std::vector<size_t> > adjlist;
+    adjlist.resize(numparts);
+    
+    std::vector<std::set<size_t> > allnbrs;
+    allnbrs.resize(numparts);
+    for(size_t f = 0;f < numimgs; ++f) {
+      CImg<uint32_t> prevfrm;
+      if (f > 0) prevfrm = superpixels_newidx.get_shared_plane(f-1);
+      CImg<uint32_t> frm = superpixels_newidx.get_shared_plane(f);
+      CImg<uint32_t> nextfrm;
+      if (f <numimgs-1) nextfrm= superpixels_newidx.get_shared_plane(f+1);
+      std::set<size_t> nbrs;
+      cimg_forXY(frm,X,Y) {
+        size_t i = frm(X,Y);
+        if (X>0) allnbrs[i].insert(frm(X-1,Y));
+        if (Y>0) allnbrs[i].insert(frm(X,Y-1));
+        if (X<superpixels_newidx.width()-1) allnbrs[i].insert(frm(X+1,Y));
+        if (Y<superpixels_newidx.height()-1) allnbrs[i].insert(frm(X,Y+1));
+        if (f>0) allnbrs[i].insert(prevfrm(X,Y));
+        if (f<numimgs-1) allnbrs[i].insert(nextfrm(X,Y));
+      }
+    }
+    
+    for (size_t i = 0; i < numparts;++i) {
+      size_t frame = newpartid2frame[i];
+      CImg<uint32_t> frm = superpixels_newidx.get_shared_plane(frame);
+      std::set<size_t> nbrs = allnbrs[i];
+      nbrs.erase(i);
+      // add the cross frames
+    /*  std::pair<size_t, size_t> pr = std::make_pair(frame + 1, newpartid2oldpartid[i]);
+      if (partitions.find(pr) != partitions.end()) {
+        nbrs.insert(partitions[pr]);
+      }
+      pr = std::make_pair(frame - 1, newpartid2oldpartid[i]);
+      if (partitions.find(pr) != partitions.end()) {
+        nbrs.insert(partitions[pr]);
+      }*/
+      std::copy(nbrs.begin(), nbrs.end(), std::back_inserter(adjlist[i]));
+    }
+  /*
+    for (size_t i = 0;i < numparts; ++i) {
+      std::cout << i << ": ";
+      for (size_t j = 0; j < adjlist[i].size(); ++j) {
+        std::cout << adjlist[i][j] << " ";
+      }
+      std::cout << std::endl;
     }*/
-    std::copy(nbrs.begin(), nbrs.end(), std::back_inserter(adjlist[i]));
-  }
-/*
-  for (size_t i = 0;i < numparts; ++i) {
-    std::cout << i << ": ";
-    for (size_t j = 0; j < adjlist[i].size(); ++j) {
-      std::cout << adjlist[i][j] << " ";
+    // generate the superpixel features
+      // histogram is compacted to 8*8*8 bins
+    std::vector<std::vector<float> > features;
+    features.resize(numparts);
+    for (size_t i = 0;i < numparts; ++i) {
+      features[i].resize(1, 0); 
     }
-    std::cout << std::endl;
-  }*/
-  // generate the superpixel features
-    // histogram is compacted to 8*8*8 bins
-  std::vector<std::vector<float> > features;
-  features.resize(numparts);
-  for (size_t i = 0;i < numparts; ++i) {
-    features[i].resize(1, 0); 
-  }
 
-  oarc << adjlist;
-  oarc << features;
-  // write
-  fout.close();
+    oarc << adjlist;
+    oarc << features;
+    // write
+    fout.close();
+  }
+  dc.barrier();
 }
 
