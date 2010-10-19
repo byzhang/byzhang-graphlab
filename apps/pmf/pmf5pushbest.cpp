@@ -56,13 +56,10 @@ typedef double  sdouble;
 #define IS_ROUND_ROBIN_CONSTANT 6
 #define MAX_ITERATIONS_CONSTANT 7
 
-const int NUM_ITERATIONS_TO_RUN = 30;
-int BURN_IN = 20;
+const int NUM_ITERATIONS_TO_RUN = 150;
 
 bool BPTF = true;
-
-#define D 30 //diemnsion for U,V
-
+#define D 120 //diemnsion for U,V
 int options;
 timer gt;
 using namespace itpp;
@@ -108,6 +105,7 @@ mat iW0T;
 //vec mu_U, mu_V, mu_T;
 
 bool record_history = false;
+int BURN_IN = 20;
 bool tensor = true;
 double counter[20];
 
@@ -270,7 +268,7 @@ double get_rmse(const vertex_data & v){
 void sync_MMT(size_t index, const gl_dtypes::ishared_data& shared_data,
               gl_dtypes::iscope& scope, graphlab::any& new_data) {
 
-  if (scope.vertex()%10000 == 0)   printf("begin: sync_MMT %d %ld\n", myprocid, scope.vertex());
+
   timer t;
   t.start();
   bool debug = false;
@@ -299,22 +297,19 @@ void sync_MMT(size_t index, const gl_dtypes::ishared_data& shared_data,
   new_data = newdata;
   ASSERT_GT(sumsum(newdata.QQ), 0);
   counter[3] += t.current_time();
-  if (scope.vertex()%10000 == 0)   printf("end: sync_MMT %d %ld\n", myprocid, scope.vertex());
 }
 
 
 void sync_QQR(size_t index, const gl_dtypes::ishared_data& shared_data,
               gl_dtypes::iscope& scope, graphlab::any& new_data) {
 
-  if (scope.vertex() % 10000 == 0) 
-        printf("begin: sync_QQR %d %d\n", myprocid, scope.vertex());
 
   timer t2;
   t2.start();
   bool debug = false;
   /* GET current vertex data */
 
-  //assert((int)index>=0 && (int)index<K);
+  assert((int)index>=0 && (int)index<K);
 
   const vertex_data& vdata = scope.const_vertex_data();
  
@@ -325,7 +320,7 @@ void sync_QQR(size_t index, const gl_dtypes::ishared_data& shared_data,
   newdata.rmse += vdata.rmse;
   
   /* CALCULATE new value */
-  if (debug&& ((int)scope.vertex() == 0 || (int)scope.vertex() == M-1 || (int)scope.vertex() == M || (int)scope.vertex() == M+N-1)){
+  if (debug&& ((int)scope.vertex() == 0 || (int)scope.vertex() == M-1 || (int)scope.vertex() == M || (int)scope.vertex() == M+N-1) && ((int)index ==0 || (int)index == K-1)){
     printf("QQR entering %s node  %u for time: %d\n", (((int)scope.vertex() < M) ? "movie":"user"), (int)scope.vertex(), (int)index);   
     debug_print_vec((((int)scope.vertex() < M) ? "V " : "U") , vdata.pvec, D);
   }
@@ -338,12 +333,12 @@ void sync_QQR(size_t index, const gl_dtypes::ishared_data& shared_data,
   edge_list ins = scope.in_edge_ids();
   int numedges = vdata.num_edges;
 
-  if (numedges == 0 || K == 1){
+  if (numedges == 0){
     return;
   }
 
   assert(numedges > 0);
-  
+
   timer t;
   t.start(); 
   counter[0] += t.current_time();
@@ -403,7 +398,6 @@ void sync_QQR(size_t index, const gl_dtypes::ishared_data& shared_data,
   //    assert(sumsum(newdata.vals[i].QQ)>0);
   //}
   counter[4] += t2.current_time();
-  if (scope.vertex() % 10000 == 0)   printf("end: sync_QQR %d %ld (%lf secs)\n", myprocid, scope.vertex(), t2.current_time());
 }
 
 
@@ -441,7 +435,7 @@ static void merge_mult(size_t index, const gl_dtypes::ishared_data& shared_data,
 }
 
 
-/*void reduce_RMSE(size_t index, const gl_dtypes::ishared_data& shared_data,
+void reduce_RMSE(size_t index, const gl_dtypes::ishared_data& shared_data,
                  gl_dtypes::iscope& scope, graphlab::any& new_data) {
 
   double curval = new_data.as<double>();
@@ -458,11 +452,11 @@ static void merge_RMSE(size_t index, const gl_dtypes::ishared_data& shared_data,
   current_data = double(newval + current_data.as<double>());
   std::cout << "*** merge RMSE index:" << index << " current = " << x<< std::endl;
 
-} */
+} 
 
 static void apply_MMT_U(size_t index, const gl_dtypes::ishared_data& shared_data,
                         graphlab::any& current_data, const graphlab::any& new_data) {
-  printf("Begin - Apply %d %d: Apply MMT_U\n", myprocid, (int) index);   
+  printf("Apply %d: Apply MMT_U\n", (int) index);   
   assert(BPTF);
   timer t;
   t.start();
@@ -502,14 +496,12 @@ static void apply_MMT_U(size_t index, const gl_dtypes::ishared_data& shared_data
   retm.QR = mu_U;
   current_data = retm;
   counter[5] += t.current_time();
-  printf("End - Apply %d %d: Apply MMT_U (%lf secs)\n", myprocid, (int) index,
-        t.current_time());   
 }
 
 static void apply_MMT_V(size_t index, const gl_dtypes::ishared_data& shared_data,
                         graphlab::any& current_data, const graphlab::any& new_data) {
 
-  printf("Begin - Apply MMT %d - %d: Apply MMT_V\n", myprocid,  (int) index);     
+  printf("Apply %d: Apply MMT_V\n", (int) index);     
   assert(BPTF);
   const vec &Vmean = new_data.as<QQR>().QR/N;
   const mat &VVT = new_data.as<QQR>().QQ;
@@ -547,7 +539,6 @@ static void apply_MMT_V(size_t index, const gl_dtypes::ishared_data& shared_data
   current_data = retm;
 
 
-  printf("End - Apply MMT %d - %d: Apply MMT_V\n", myprocid,  (int) index);     
 
 }
 
@@ -561,7 +552,7 @@ static void apply_func(size_t index,
 
   double rmse = new_data.as<double>();
   rmse = sqrt(rmse/L);
-  std::cout << myprocid << ":  TRAIN RMSE is : " << rmse << std::endl;
+  std::cout << myprocid << ":  Training RMSE is : " << rmse << std::endl;
   
   ASSERT_GT(rmse,0);
   
@@ -573,35 +564,19 @@ static void apply_func(size_t index,
 static void apply_QQR(size_t index,  const gl_dtypes::ishared_data& sdm,
                       graphlab::any& current_data, const graphlab::any& new_data) {
 
-  printf("Begin - Apply %d: Apply QQR at proc %d\n", (int) index, myprocid);   
+  printf("Apply %d: Apply QQR at proc %d\n", (int) index, myprocid);   
   if (debug && ((int)index == 0 || (int)index == K-1)){
     printf("entering time node  %d \n", (int)index);   
   } 
 
-
   mult_QQR data = new_data.as<mult_QQR>();
   mult_vec &ret = current_data.as<mult_vec>();
-  
-  double rmse = data.rmse;
-  rmse = sqrt(rmse/L);
-  std::cout << "Training RMSE is : " << rmse << std::endl;
-  // write the final result into the shared data table
-  ret.rmse = rmse;
-  
-  distributed_metrics::instance(__dc)->set_value("residual", rmse);
-  printf("End - Apply %d: Apply QQR at proc %d\n", (int) index, myprocid);   
-
-  if (K == 1)
-    return;
-
   //mult_vec othert = ret; 
 
   for (int i=0; i<K; i++){
     mat  QQ = data.vals[i].QQ;
     vec  QR = data.vals[i].QR;
-    
-    
-    printf("QQR proc=%d i=%d\n", (int) myprocid, i);  
+ 
     assert(i>=0 && i<K);
     if (debug && (i==0 || i == K-1))
       printf("node %d with Q size: %d\n", i, (int)D);
@@ -686,6 +661,13 @@ static void apply_QQR(size_t index,  const gl_dtypes::ishared_data& sdm,
 
   }
 
+  double rmse = data.rmse;
+  rmse = sqrt(rmse/L);
+  std::cout << "Training RMSE is : " << rmse << std::endl;
+  // write the final result into the shared data table
+  ret.rmse = rmse;
+  
+  distributed_metrics::instance(__dc)->set_value("residual", rmse);
 
 }
 
@@ -750,16 +732,14 @@ void last_iter(gl_dtypes::ishared_data &sdm);
 
 
 void sample_alpha(double res2, gl_dtypes::ishared_data &sdm){
-  //double res;
-  //if (!tensor)
-  //  res = powf(sdm.get(RMSE).as<double>(),2) * L;
-
-  bool debug = false;
-  double res = powf(sdm.get(TIME_OFFSET).as<mult_vec>().rmse,2)*L;
+  double res;
+  if (!tensor)
+    res = powf(sdm.get(RMSE).as<double>(),2) * L;
+  else res = powf(sdm.get(TIME_OFFSET).as<mult_vec>().rmse,2)*L;
   //assert(res > 0.1);
 
   printf("res vs. res2 %g %g\n", res, res2); 
-  if (res < 0.2)
+  if (res < 1000)
     res = L * 3;
 
   // res = res2;
@@ -778,7 +758,7 @@ void sample_alpha(double res2, gl_dtypes::ishared_data &sdm){
     assert(alpha != 0);
 
     if (debug)
-      cout<<"Sampling from alpha" <<nuAlpha_<<" "<<iWalpha<<" " <<iiWalpha_<<" "<<alpha<<endl;
+      cout<<"Sampling from alpha" <<nuAlpha_<<" "<<iiWalpha_<<" "<<alpha<<endl;
     printf("sampled alpha is %g\n", alpha); 
     sdm.atomic_set(ALPHA_OFFSET, alpha);
   }
@@ -905,7 +885,7 @@ void sample_T(gl_dtypes::ishared_data& sdm){
   }*/
 
 double calc_rmse(graph_type * _g, bool test, double & res, gl_dtypes::ishared_data& sdm){
-  printf("Begin RMSE: %d\n", myprocid);
+
   if (test && Le == 0)
     return NAN;
    
@@ -917,7 +897,7 @@ double calc_rmse(graph_type * _g, bool test, double & res, gl_dtypes::ishared_da
   if (tensor) 
     tvec = sdm.get(TIME_OFFSET).as<mult_vec>();
 
-  for (int i=0; i< M+N; i++){ //TODO: optimize to start from N?
+  for (int i=M; i< M+N; i++){ //TODO: optimize to start from N?
     vertex_data * data = &dg->vertex_data(i);
     foreach(edge_id_t iedgeid, _g->in_edge_ids(i)) {
          
@@ -940,16 +920,16 @@ double calc_rmse(graph_type * _g, bool test, double & res, gl_dtypes::ishared_da
         }
            
         assert(sum != 0);         
-        if (BPTF && iiter > BURN_IN)
-          edge.avgprd += sum;
+        //if (BPTF && iiter > BURN_IN)
+        //   edge.avgprd += sum;
 
         if (debug && (i== M || i == M+N-1) && (e == 0 || e == (test?Le:L)))
           cout<<"RMSE:"<<i <<"u1"<< *vec2vec(data->pvec, D) << " v1 "<< *vec2vec(pdata->pvec, D)<<endl; 
         //assert(add<25 && add>= 0);
        
-        if (BPTF && iiter > BURN_IN){
-          add = powf((edge.avgprd / (iiter - BURN_IN)) - edge.weight, 2);
-        }
+        //if (BPTF && iiter > BURN_IN){
+        //  add = pow((edge.avgprd / (iiter - BURN_IN)) - edge.weight, 2);
+        //}
          
         RMSE+= add;
         e++;
@@ -958,7 +938,6 @@ double calc_rmse(graph_type * _g, bool test, double & res, gl_dtypes::ishared_da
   }
   res = RMSE;
   assert(e == (test?Le:L));
-  printf("End RMSE: %d\n", myprocid);
   return sqrt(RMSE/(double)e);
 
 }
@@ -1030,7 +1009,6 @@ void pmf_update_function(gl_dtypes::iscope &scope,
 
   vertex_data& vdata = scope.vertex_data();
  
-  if (scope.vertex() % 10000 == 0) printf("Update: %ld\n", scope.vertex());
   
   /* CALCULATE new value */
   if (debug&& (scope.vertex() == 0 || (int)scope.vertex() == M-1 || (int)scope.vertex() == M || (int)scope.vertex() == M+N-1)){
@@ -1127,7 +1105,7 @@ void pmf_update_function(gl_dtypes::iscope &scope,
         assert(sum != 0);
         if (BPTF && iiter > BURN_IN){
           edge.avgprd += sum;       
-          trmse = powf((edge.avgprd / (iiter - BURN_IN)) - edge.weight, 2);
+          trmse = pow((edge.avgprd / (iiter - BURN_IN)) - edge.weight, 2);
         }
         vdata.rmse += trmse; 
  
@@ -1187,9 +1165,8 @@ void pmf_update_function(gl_dtypes::iscope &scope,
     //   vertex_data->agg[i] = 0.8*vertex_data->agg[i] + 0.2*result[i];
   }
 
-  if ((int)scope.vertex() == M+N-1)
+  if (scope.vertex() == 1)
     last_iter(*sdm);
-
   vdata.rounds++;
     
   if (sdm->get_constant(IS_ROUND_ROBIN_CONSTANT).as<bool>() == false) {
@@ -1202,48 +1179,43 @@ void pmf_update_function(gl_dtypes::iscope &scope,
 
 void last_iter(gl_dtypes::ishared_data &sdm){
 
-  //if (!tensor)
-  //  sdm.trigger_sync(RMSE);
-  //if (tensor)
-  sdm.trigger_sync(TIME_OFFSET);
+  if (!tensor)
+    sdm.trigger_sync(RMSE);
+  if (tensor)
+    sdm.trigger_sync(TIME_OFFSET);
   if (BPTF){
     sdm.trigger_sync(A_U_OFFSET);
     sdm.trigger_sync(A_V_OFFSET);
   }
 
-   if (myprocid == 0){
-      double res2;
-      ASSERT_EQ(g1.num_vertices() , M+N);
-      double test_rmse = calc_rmse(&g1, true, res2, sdm);
-      printf("Current result. TEST RMSE= %0.4f.\n", test_rmse);
-
-  }
-
-
+  double res;
+  double rmse = NAN;
+  //double rmse = calc_rmse(&g, false, res, false);
   //rmse=0;
   //printf("%g) Iter %s %d  Obj=%g, TRAIN RMSE=%0.4f TEST RMSE=%0.4f.\n", gt.current_time(), BPTF?"BPTF":"ALS", iiter,calc_obj(sdm),  rmse, calc_rmse(&g1, true, res2, true, sdm));
-  printf("%g) Iter %s %d  Obj=%g.\n", gt.current_time(), BPTF?"BPTF":"ALS", iiter,calc_obj(sdm));
+  printf("%g) Iter %s %d  Obj=%g, TRAIN RMSE=%0.4f.\n", gt.current_time(), BPTF?"BPTF":"ALS", iiter,calc_obj(sdm),  rmse);
   iiter++;
   if (iiter == BURN_IN && BPTF){
     printf("Finished burn-in period. starting to aggregate samples\n");
   }
          
   if (BPTF){
-    sample_alpha(0, sdm);
+    sample_alpha(res, sdm);
     //sample_U();
     //sample_V();
     if (tensor) 
       sample_T(sdm);
   }
-
-  printf("Finished last_iter %d\n", myprocid);
 }
 
 
 
 double calc_obj(gl_dtypes::ishared_data &sdm){
    
-  double res = powf(sdm.get(TIME_OFFSET).as<mult_vec>().rmse,2)*L;
+  double res;  
+  if (!tensor)
+    res = powf(sdm.get(RMSE).as<double>(),2) * L;
+  else res = powf(sdm.get(TIME_OFFSET).as<mult_vec>().rmse,2)*L;
 
   double sumU = 0, sumV = 0, sumT = 0;
   timer t;
@@ -1317,10 +1289,8 @@ void start(int argc, char ** argv, distributed_control & dc) {
   }
 
   if (dc.procid() == 0){
-    printf("loading test data file by node %d: %s\n", (infile+"e").c_str(), dc.procid());
+    printf("loading test data file by node 0: %s\n", (infile+"e").c_str());
     load_pmf_graph((infile+"e").c_str(),&g1, true);
-    if (g1.num_vertices() > 0)
-       ASSERT_EQ(g1.num_vertices(), N+M);
   }
 
 
@@ -1330,7 +1300,6 @@ void start(int argc, char ** argv, distributed_control & dc) {
   } else if (infile.find("netflix") != string::npos) {
     M=95526; N=3561; K=27; L=3298163; Le = 545177;
   }
-  
   
   
   dg = new graph_dtype(dc);
@@ -1386,6 +1355,7 @@ void start(int argc, char ** argv, distributed_control & dc) {
   // if (!tensor){ 
 
   //}
+  if (tensor){ 
      
     mult_QQR mult;
     for (int i=0; i<K; i++)
@@ -1396,10 +1366,10 @@ void start(int argc, char ** argv, distributed_control & dc) {
     //for (int i=0; i<K; i++){
 
     sdm.set_fullsweep_sync(TIME_OFFSET, sync_QQR, apply_QQR,merge_mult, mult, 100000000, 
-                           scope_range::READ_CONSISTENCY,0, M+N);
+                           scope_range::READ_CONSISTENCY,M, M+N);
     sdm.atomic_set(TIME_OFFSET, multret);
-  
-   if (BPTF){
+  }
+  if (BPTF){
     sdm.set_fullsweep_sync(A_U_OFFSET, sync_MMT, apply_MMT_U,merge_QQR, QQR(), 400000000,
                            scope_range::VERTEX_READ_CONSISTENCY, 0, M);
     sdm.set_fullsweep_sync(A_V_OFFSET, sync_MMT, apply_MMT_V,merge_QQR, QQR(), 40000000,
@@ -1407,7 +1377,8 @@ void start(int argc, char ** argv, distributed_control & dc) {
   }
 
  
-  dp = GenDiffMat(K)*pT ;
+  if (tensor) 
+    dp = GenDiffMat(K)*pT ;
  
   if (debug)
     std::cout<<dp<<std::endl;
@@ -1481,7 +1452,7 @@ void start(int argc, char ** argv, distributed_control & dc) {
 
   printf("BPTF: %d procid %d \n", (int) BPTF, (int) dc.procid());
 
-dc.barrier();
+
   // Have to declare this from all procs
   distributed_metrics::instance(&dc)->set_value("residual", 0.0);
   //distributed_metrics::instance(&dc)->set_value("custom_output_1", 0.0);
@@ -1491,31 +1462,19 @@ dc.barrier();
       sample_alpha(1*L, sdm);
       //sdm.sync( dg,A_U_OFFSET);
       //sdm.sync( dg,A_V_OFFSET);
-      //if (tensor) 
-      //  sample_T(sdm);
+      if (tensor) 
+        sample_T(sdm);
     }
-   } 
+  }
+  
+  dc.barrier();
+ 
 
   if (BPTF){
     sdm.sync_from_local(A_U_OFFSET);
     sdm.sync_from_local(A_V_OFFSET);
   }
-
- dc.barrier();
-  if (dc.procid() == 0){ 
-     if (BPTF && tensor)
-	sample_T(sdm);
-
-     double res2;
-    if (g1.num_vertices() > 0){
-    ASSERT_EQ(g1.num_vertices() , M+N);
-    double test_rmse = calc_rmse(&g1, true, res2, sdm);
-    printf("Current result. TEST RMSE= %0.4f.\n", test_rmse);
-    }
-
-
-  } // procid == 0
-
+  if (!tensor) sdm.sync_from_local(RMSE);
   dc.barrier();
   /// Timing
   gt.start();
@@ -1678,13 +1637,8 @@ void load_pmf_graph(const char* filename, graph_type * g, bool test) {
      }
      }
   */
-   int val;
-  if (options != BPTF_TENSOR_MULT && options != ALS_TENSOR_MULT)
-  	val = read_mult_edges<edata2>(f, M+N, g);
-  else
-  	val = read_mult_edges<edata3>(f, M+N, g);
- 
-if (!test)
+  int val = read_mult_edges<edata2>(f, M+N, g);
+  if (!test)
     L = val;
   else Le = val;
 
@@ -1840,8 +1794,6 @@ void load_pmf_distgraph(const char* filename, graph_dtype * g, bool test, distri
   assert(K>=1);
   assert(M>=1 && N>=1); 
 
-  tensor = (K>1);
-
   vertex_data vdata;
   gl::ones(vdata.pvec, D, 0.1);
 
@@ -1979,8 +1931,6 @@ int main(int argc,  char *argv[]) {
   default:
     assert(0);
   }
-
-  tensor = (K>1);
 
   logger(LOG_INFO,(BPTF?"BPTF starting\n": "PMF starting\n"));
   dc.barrier();

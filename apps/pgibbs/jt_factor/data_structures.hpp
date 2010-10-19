@@ -12,6 +12,8 @@
 
 
 #include <iostream>
+#include <iomanip>
+
 #include <fstream>
 #include <vector>
 #include <map>
@@ -29,7 +31,7 @@
 
 
 // The maximum number of dimensions in a factor table
-const size_t MAX_DIM = 5;
+const size_t MAX_DIM = 16;
 
 // Basic graphical model typedefs
 typedef graphlab::vertex_id_t     vertex_id_t;
@@ -42,6 +44,21 @@ typedef factor_t::assignment_type       assignment_t;
 
 // Represents a null VID in the tree
 const vertex_id_t NULL_VID = -1;
+const edge_id_t NULL_EID = -1;
+
+
+std::string make_filename(const std::string& base,
+                          const std::string& suffix,
+                          size_t number) {
+  std::stringstream strm;
+  strm << base
+       << std::setw(10) << std::setfill('0')
+       << number
+       << suffix;
+  std::cout << strm.str() << std::endl;
+  return strm.str();
+}
+
 
 
 
@@ -64,7 +81,7 @@ namespace mrf {
 
     vertex_data() : updates(0), 
                     in_tree(false), 
-                    tree_id(-1) { }
+                    tree_id(NULL_VID) { }
 
     vertex_data(const variable_t& variable,
                 const std::set<vertex_id_t>& factor_ids) :
@@ -74,7 +91,7 @@ namespace mrf {
       belief(domain_t(variable)),
       updates(0),
       in_tree(false),
-      tree_id(-1) {    // Set the belief to uniform 0
+      tree_id(NULL_VID) {    // Set the belief to uniform 0
       belief.uniform(-std::numeric_limits<double>::max());
       assert(!factor_ids.empty());
     }
@@ -260,6 +277,7 @@ public:
       }
       // Get the variable name
       std::string var_name = trim(line.substr(0, namelen));
+      assert(varsize > 0);
       // Create a new finite variable in the universe
       variable_t variable(unique_var_id++, varsize);
       // Store the variable in the local variable map
@@ -480,12 +498,18 @@ void construct_mrf(const factorized_model& model,
 
 namespace junction_tree {
   struct vertex_data {
+    vertex_id_t parent;
     domain_t variables;
+    bool calibrated;
+    bool sampled;
     std::set<vertex_id_t> factor_ids;
     factor_t factor;
     assignment_t asg;
-    bool sampled;
-    vertex_data() : sampled(false) { }
+
+    vertex_data() : 
+      parent(NULL_VID),
+      calibrated(false), 
+      sampled(false)  { }
   }; // End of vertex data
 
 
