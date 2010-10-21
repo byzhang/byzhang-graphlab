@@ -57,6 +57,7 @@ int main(int argc, char** argv) {
   std::string model_filename = "";
 
   size_t treesize = 1000;
+  size_t treeheight = 0;
   bool priorities = false;
   std::vector<float> runtimes(1,10);
   size_t treewidth = 3;
@@ -78,6 +79,11 @@ int main(int argc, char** argv) {
   clopts.attach_option("treesize", 
                        &treesize, treesize,
                        "The number of variables in a junction tree");
+
+  clopts.attach_option("treeheight", 
+                       &treeheight, treeheight,
+                       "The height of the tree.");
+
 
 
   clopts.attach_option("treewidth", 
@@ -129,6 +135,7 @@ int main(int argc, char** argv) {
               << "runtime:       " << runtime << std::endl
               << "treesize:      " << treesize << std::endl
               << "treewidth:     " << treewidth << std::endl
+              << "treeheight:    " << treeheight << std::endl
               << "factorsize:    " << factorsize << std::endl
               << "subthreads:    " << subthreads << std::endl
               << "priorities:    " << priorities << std::endl;
@@ -145,6 +152,7 @@ int main(int argc, char** argv) {
                     treesize,
                     treewidth,
                     factorsize,
+                    treeheight,
                     subthreads,
                     priorities);
     double actual_runtime = timer.current_time();
@@ -184,6 +192,7 @@ int main(int argc, char** argv) {
          << treesize << '\t'
          << treewidth << '\t'
          << factorsize << '\t'
+         << treeheight << '\t'
          << subthreads << '\t'
          << priorities << '\t'
          << actual_runtime << '\t'
