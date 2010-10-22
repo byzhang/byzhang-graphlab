@@ -77,7 +77,7 @@ namespace mrf {
 
     bool           in_tree;
     vertex_id_t    tree_id;
-
+    vertex_id_t    height;
 
     vertex_data() : updates(0), 
                     in_tree(false), 
@@ -91,7 +91,8 @@ namespace mrf {
       belief(domain_t(variable)),
       updates(0),
       in_tree(false),
-      tree_id(NULL_VID) {    // Set the belief to uniform 0
+      tree_id(NULL_VID),
+      height(0) {    // Set the belief to uniform 0
       belief.uniform(-std::numeric_limits<double>::max());
       assert(!factor_ids.empty());
     }
@@ -103,6 +104,7 @@ namespace mrf {
       arc << belief;
       arc << updates;
       arc << in_tree;
+      arc << height;
     }
 
     void load(graphlab::iarchive &arc) {
@@ -112,6 +114,7 @@ namespace mrf {
       arc >> belief;
       arc >> updates;
       arc >> in_tree;
+      arc >> height;
     }
   }; // End of vertex data
 
@@ -456,6 +459,7 @@ void construct_mrf(const factorized_model& model,
   // Add all the variables
   foreach(variable_t variable, model.variables()) {
     mrf::vertex_data vdata(variable, model.factor_ids(variable));
+    vdata.asg.uniform_sample();
     graphlab::vertex_id_t vid = graph.add_vertex(vdata);
     // We require variable ids to match vertex id (this simplifies a
     // lot of stuff).
@@ -517,7 +521,8 @@ namespace junction_tree {
     domain_t variables;
     factor_t message;
     bool calibrated;
-    edge_data() : calibrated(false) { }
+    bool received;
+    edge_data() : calibrated(false), received(false) { }
   }; // End of edge data
 
 
