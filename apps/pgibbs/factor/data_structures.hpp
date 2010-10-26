@@ -103,7 +103,6 @@ struct vertex_data {
     child_candidates(0) {
     // Set the belief to uniform 0
     belief.uniform(-std::numeric_limits<double>::max());
-
     assert(!factor_ids.empty());
   }
 
@@ -220,6 +219,7 @@ class factorized_model {
 public:
   void add_factor(const factor_t& factor) {
     _factors.push_back(factor);
+    _factors.rbegin()->normalize();
     size_t factor_id = _factors.size() - 1;
     for(size_t i = 0; i < factor.num_vars(); ++i) {
       variable_t var = factor.args().var(i); 
@@ -442,6 +442,8 @@ void construct_clique_graph(const factorized_model& model,
   // Add all the variables
   foreach(variable_t variable, model.variables()) {
     vertex_data vdata(variable, model.factor_ids(variable));
+    // start with an initial random assignment
+    vdata.asg.uniform_sample();
     graphlab::vertex_id_t vid = graph.add_vertex(vdata);
     // We require variable ids to match vertex id (this simplifies a
     // lot of stuff).

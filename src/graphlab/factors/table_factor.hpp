@@ -184,15 +184,16 @@ namespace graphlab {
           i < backup.num_vars() || j < other.num_vars(); ) {
         assert(_num_vars <= MAX_DIM);
         // Both 
-        if(i < backup.num_vars() && j < other.num_vars()) {
+        if(i < backup.num_vars() && j < other.num_vars() 
+           && _num_vars < MAX_DIM) {
           if(backup.var(i) < other.var(j))  
             _vars[_num_vars++] = backup.var(i++);
           else if(other.var(j) < backup.var(i))  
             _vars[_num_vars++] = other.var(j++);
           else { _vars[_num_vars++] = backup.var(i++); j++; }
-        } else if(i < backup.num_vars()) {
+        } else if(i < backup.num_vars() && _num_vars < MAX_DIM) {
           _vars[_num_vars++] = backup.var(i++);
-        } else if(j < other.num_vars()) {
+        } else if(j < other.num_vars() && _num_vars < MAX_DIM) {
           _vars[_num_vars++] = other.var(j++);
         } else {
           // Unreachable
@@ -471,7 +472,7 @@ namespace graphlab {
 
     //! Uniformly sample a new index value
     void uniform_sample() {
-      set_index( std::rand() % size() );
+      set_index( random::rand_int(size() - 1)  );
     }
     
     //! Get the index of this assignment
@@ -526,8 +527,8 @@ namespace graphlab {
     //! Make this an ending assignment
     void make_end() {
       _index = -1;
-      for(size_t i = 0; i < _args.num_vars(); ++i)
-        _asgs[i] = _args.var(i).arity;
+      // for(size_t i = 0; i < _args.num_vars(); ++i)
+      //   _asgs[i] = _args.var(i).arity;
     }
 
     //! Restrict the assignment to an assignment over the subdomain
@@ -632,7 +633,7 @@ namespace graphlab {
   static const double EPSILON = std::numeric_limits<double>::min();
   static const double LOG_EPSILON = std::log(EPSILON);
   static const double MAX_DOUBLE =  std::numeric_limits<double>::max();
-  static const double LOG_MAX_DOUBLE = std::log(MAX_DOUBLE);
+  //  static const double LOG_MAX_DOUBLE = std::log(MAX_DOUBLE);
 
 
 
@@ -793,12 +794,12 @@ namespace graphlab {
     inline table_factor& operator*=(const table_factor& other) {
       for(assignment_type asg = args().begin(); asg < args().end(); ++asg) {
         logP(asg.linear_index()) += other.logP(asg);
-        // if(std::isinf( logP(asg.linear_index()) ) ||
-        //    std::isnan( logP(asg.linear_index()) ) ) {
-        //   logP(asg.linear_index()) = -MAX_DOUBLE;
-        // } 
-        assert( !std::isinf( logP(asg.linear_index()) ) );
-        assert( !std::isnan( logP(asg.linear_index()) ) );
+        if(std::isinf( logP(asg.linear_index()) ) ||
+           std::isnan( logP(asg.linear_index()) ) ) {
+          logP(asg.linear_index()) = -MAX_DOUBLE;
+        } 
+        // assert( !std::isinf( logP(asg.linear_index()) ) );
+        // assert( !std::isnan( logP(asg.linear_index()) ) );
       }
       return *this;
     }
@@ -951,7 +952,7 @@ namespace graphlab {
 
 
     //! compute the average l1 norm between to factors
-    inline double residual(const table_factor& other) const {
+    inline double l1_diff(const table_factor& other) const {
       // This factor must be over the same dimensions as the other
       // factor
       assert(args() == other.args());  
@@ -962,7 +963,9 @@ namespace graphlab {
       return sum / args().size();
     }
 
-    inline double log_residual(const table_factor& other) const {
+
+    //! compute the l1 norm in log space
+    inline double l1_logdiff(const table_factor& other) const {
       assert(args() == other.args());
       double sum = 0; 
       for(size_t i = 0; i < args().size(); ++i) {

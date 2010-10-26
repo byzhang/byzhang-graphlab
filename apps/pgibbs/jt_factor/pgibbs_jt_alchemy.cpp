@@ -26,6 +26,7 @@
 #include <graphlab/macros_def.hpp>
 
 
+// #define DRAW_IMAGE
 
 
 std::string results_fn = "experiment_results.tsv";
@@ -45,18 +46,26 @@ size_t get_next_experiment_id(const std::string& experiment_file) {
 
 
 int main(int argc, char** argv) {
+  // set the global logger
+  // global_logger().set_log_level(LOG_WARNING);
+  // global_logger().set_log_to_console(true);
+
+
   std::cout << "This program runs junction tree blocked MCMC "
             << "inference on large factorized models."
             << std::endl;
 
-
   std::srand ( graphlab::timer::usec_of_day() );
   graphlab::random::seed();
+  // std::srand ( 123  );
+  // graphlab::random::seed( 123 );
+
 
 
   std::string model_filename = "";
 
   size_t treesize = 1000;
+  size_t treeheight = 0;
   bool priorities = false;
   std::vector<float> runtimes(1,10);
   size_t treewidth = 3;
@@ -78,6 +87,11 @@ int main(int argc, char** argv) {
   clopts.attach_option("treesize", 
                        &treesize, treesize,
                        "The number of variables in a junction tree");
+
+  clopts.attach_option("treeheight", 
+                       &treeheight, treeheight,
+                       "The height of the tree.");
+
 
 
   clopts.attach_option("treewidth", 
@@ -115,7 +129,16 @@ int main(int argc, char** argv) {
   std::cout << "Building graphlab MRF." << std::endl;
   mrf::graph_type mrf_graph;
   construct_mrf(factor_graph, mrf_graph);
-  
+
+  parallel_sampler sampler(factor_graph,
+                           mrf_graph,
+                           clopts,
+                           treesize,
+                           treewidth,
+                           factorsize,
+                           treeheight,
+                           subthreads,
+                           priorities);
 
   float run_so_far = 0;
   foreach(float runtime, runtimes) {
@@ -129,49 +152,42 @@ int main(int argc, char** argv) {
               << "runtime:       " << runtime << std::endl
               << "treesize:      " << treesize << std::endl
               << "treewidth:     " << treewidth << std::endl
+              << "treeheight:    " << treeheight << std::endl
               << "factorsize:    " << factorsize << std::endl
               << "subthreads:    " << subthreads << std::endl
-              << "priorities:    " << priorities << std::endl;
-   
+              << "priorities:    " << priorities << std::endl;   
+    clopts.print();
+
     // run the fully parallel sampler
     float remaining_time = runtime - run_so_far;
     if(remaining_time <= 0) remaining_time = 0;
 
     graphlab::timer timer;
     timer.start();
-    parallel_sample(factor_graph, mrf_graph, 
-                    clopts.ncpus,
-                    remaining_time,
-                    treesize,
-                    treewidth,
-                    factorsize,
-                    subthreads,
-                    priorities);
+    sampler.sample_once(remaining_time);
     double actual_runtime = timer.current_time();
     std::cout << "Local Runtime: " << actual_runtime << std::endl;
     
     run_so_far += actual_runtime;
     std::cout << "Total Runtime: " << run_so_far << std::endl;
     
-    std::cout << "Computing unnormalized log-likelihood" << std::endl;
+
     double loglik = unnormalized_loglikelihood(mrf_graph,
                                                factor_graph.factors());
     
     std::cout << "LogLikelihood: " << loglik << std::endl;
-    std::cout << "Saving final prediction" << std::endl;
-    
-    
-    std::cout << "Computing update distribution:" << std::endl;
     mrf::save_beliefs(mrf_graph,  
                       make_filename("beliefs",".tsv", experiment_id).c_str());
-    
-    
-    std::cout << "Computing update counts:" << std::endl;
-    size_t total_updates = 0;
-    for(vertex_id_t vid = 0; vid < mrf_graph.num_vertices(); ++vid) {
-      mrf::vertex_data& vdata = mrf_graph.vertex_data(vid);
-      total_updates += vdata.updates;
-    }
+
+    std::cout << "Total Samples: " << sampler.total_samples() 
+	      << std::endl;
+    std::cout << "Total Changes: " << sampler.total_changes() 
+	      << std::endl;
+    std::cout << "Total Trees: " << sampler.total_trees() 
+	      << std::endl;
+    std::cout << "Total Collisions: " << sampler.total_collisions() 
+	      << std::endl;
+
 
 
 
@@ -184,15 +200,19 @@ int main(int argc, char** argv) {
          << treesize << '\t'
          << treewidth << '\t'
          << factorsize << '\t'
+         << treeheight << '\t'
          << subthreads << '\t'
          << priorities << '\t'
          << actual_runtime << '\t'
-         << total_updates << '\t'
+         << sampler.total_samples() << '\t'
+         << sampler.total_changes() << '\t'
+         << sampler.total_trees() << '\t'
          << loglik << std::endl;
     fout.close();
 
 
-    
+
+#ifdef DRAW_IMAGE    
     // Plot the final answer
     size_t rows = std::sqrt(mrf_graph.num_vertices());
     std::cout << "Rows: " << rows << std::endl;
@@ -213,17 +233,23 @@ int main(int argc, char** argv) {
     }
     img.save(make_filename("updates", ".pgm", experiment_id).c_str());
     
-    //   for(vertex_id_t vid = 0; vid < mrf_graph.num_vertices(); ++vid) {   
-    //     img.pixel(vid) = mrf_graph.vertex_data(vid).updates == 0;
-    //   }
-    //   img.save(make_filename("unsampled", ".pgm", experiment_id).c_str());
-
+    for(vertex_id_t vid = 0; vid < mrf_graph.num_vertices(); ++vid) {   
+      img.pixel(vid) = mrf_graph.vertex_data(vid).updates == 0;
+    }
+    img.save(make_filename("unsampled", ".pgm", experiment_id).c_str());
   
     for(vertex_id_t vid = 0; vid < mrf_graph.num_vertices(); ++vid) {   
       img.pixel(vid) = mrf_graph.vertex_data(vid).asg.asg_at(0);
     }
     img.save(make_filename("final_sample", ".pgm", experiment_id).c_str());
-  }
+
+    // for(vertex_id_t vid = 0; vid < mrf_graph.num_vertices(); ++vid) {   
+    //   img.pixel(vid) = mrf_graph.vertex_data(vid).height;
+    // }
+    // img.save(make_filename("heights", ".pgm", experiment_id).c_str());
+#endif
+
+  } // end of for loop over runtimes
 
   
 

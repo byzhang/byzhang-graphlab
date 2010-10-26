@@ -9,6 +9,7 @@
 #include <graphlab/parallel/pthread_tools.hpp>
 #include <graphlab/parallel/atomic.hpp>
 #include <graphlab/util/timer.hpp>
+#include <graphlab/util/random.hpp>
 
 #include <graphlab/graph/graph.hpp>
 #include <graphlab/scope/iscope.hpp>
@@ -81,6 +82,9 @@ namespace graphlab {
 
     /** Use processor affinities */
     bool use_cpu_affinity;
+
+    /** Use schedule yielding when waiting on the scheduler*/
+    bool use_sched_yield;
     
     /** Responsible for managing the update of scopes */
     ScopeFactory scope_manager;
@@ -133,6 +137,7 @@ namespace graphlab {
       ncpus( std::max(ncpus, size_t(1)) ),
       exec_type(exec_type),
       use_cpu_affinity(false),
+      use_sched_yield(true),
       scope_manager(graph, std::max(ncpus, size_t(1) ) ),
       scheduler(this, graph, std::max(ncpus, size_t(1)) ),
       update_counts(std::max(ncpus, size_t(1)), 0),
@@ -151,6 +156,15 @@ namespace graphlab {
 
     //! Get the scheduler associated with this engine 
     ischeduler_type& get_scheduler() { return scheduler; }
+
+    //! set sched yeild
+    void enable_sched_yield(bool value) {
+      use_sched_yield = value;
+    }
+
+    void enable_cpu_affinities(bool value) {
+      use_cpu_affinity = value;
+    }
 
     
     //! Set the shared data manager for this engine
@@ -303,8 +317,11 @@ namespace graphlab {
         // Start the worker thread using the thread group with cpu
         // affinity attached (CPU affinity currently only supported in
         // linux) since Mac affinity is set through the NX frameworks
-        if(use_cpu_affinity) threads.launch(&(workers[i]), i);
-        else threads.launch(&(workers[i]));        
+        if(use_cpu_affinity)  {
+	  threads.launch(&(workers[i]), i);
+	} else {
+	  threads.launch(&(workers[i]));        
+	}
       }
       threads.join();
     } // end of run threaded
@@ -314,10 +331,14 @@ namespace graphlab {
      * Simulate the use of actual threads.
      */
     void run_simulated() {
+      use_sched_yield = false;
       // repeatedly invoke run once as a random thread
       while(active) {
         // Pick a random cpu to run as
-        size_t cpuid = rand() % ncpus;
+        size_t cpuid = 0;
+        if(ncpus > 1) {
+          cpuid = random::rand_int(ncpus - 1);
+        }
         // Execute the update as that cpu
         active = run_once(cpuid);
       }
@@ -402,7 +423,7 @@ namespace graphlab {
         sched_status::status_enum stat = scheduler.get_next_task(cpuid, task);
         switch(stat) {
         case sched_status::WAITING :
-          sched_yield();
+	  if(use_sched_yield) sched_yield();
           break;
         case sched_status::COMPLETE :          
           return false;
