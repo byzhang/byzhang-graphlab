@@ -527,8 +527,10 @@ private:
 
  private:
   std::vector<std::string> gather_receive;
-
-  void set_gather_receive(procid_t source, const std::string &s) {
+  atomic<size_t> gatherid;
+  
+  void set_gather_receive(procid_t source, const std::string &s, size_t gid) {
+    while(gatherid.value != gid) sched_yield();
     gather_receive[source] = s;
   }
  public:
@@ -550,13 +552,15 @@ private:
         internal_request(sendto,
                         &dc_dist_object<T>::set_gather_receive,
                         procid(),
-                        strm.str());
+                        strm.str(),
+                        gatherid.value);
       }
       else {
         internal_control_request(sendto,
                                   &dc_dist_object<T>::set_gather_receive,
                                   procid(),
-                                  strm.str());
+                                  strm.str(),
+                                  gatherid.value);
       }
     }
     barrier();
@@ -573,6 +577,7 @@ private:
         }
       }
     }
+    gatherid.inc();
   
   }
 
@@ -646,6 +651,7 @@ private:
  public:
   template <typename U>
   void all_gather(std::vector<U>& data, bool control = false) {
+    if (numprocs() == 1) return;
     // get the string representation of the data
     use_control_calls = control;
     charstream strm(128);
@@ -736,7 +742,8 @@ private:
       std::stringstream strm2(s);
       iarchive iarc2(strm2);
       iarc2 >> data[heappos];
-
+      
+      if (i + 1 == numprocs()) break;
       // advance heappos
       // leftbranch
       bool lefttraverseblock = false;
@@ -760,6 +767,8 @@ private:
 
         // we have finished this subtree, go back up to parent
         // and block the depth traversal on the next round
+        // unless heappos is 0
+
         heappos = (heappos - 1) / BARRIER_BRANCH_FACTOR;
         lefttraverseblock = true;
         continue;
