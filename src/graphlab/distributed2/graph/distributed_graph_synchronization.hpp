@@ -676,14 +676,14 @@ void distributed_graph<VertexData, EdgeData>::conditional_update_vertex_data_and
                         size_t reply) {
   vertex_id_t localvid = global2localvid[vid];
   if (vstore.data.second >= localstore.vertex_version(localvid)) assert(vstore.hasdata);
+ #ifdef DGRAPH_DEBUG
+  logstream(LOG_DEBUG) << "Receiving vertex " << vid << "(" << localvid << ") from proc " << srcproc << ". "
+                       << vstore.data.second << " vs " << localstore.vertex_version(localvid) << std::endl;
+#endif
   if (vstore.hasdata && vstore.data.second >= localstore.vertex_version(localvid)) {
     localstore.vertex_data(localvid) = vstore.data.first;
     localstore.set_vertex_version(localvid, vstore.data.second);
     ASSERT_GE(localstore.vertex_version(localvid), vstore.data.second);
-#ifdef DGRAPH_DEBUG
-  logstream(LOG_DEBUG) << "Receiving vertex " << vid << " from proc " << srcproc << ". "
-                       << vstore.data.second << " vs " << localstore.vertex_version(localvid) << std::endl;
-#endif
   }
   if (srcproc != procid_t(-1)) {
     rmi.dc().remote_call(srcproc, reply_increment_counter, reply, dc_impl::blob());
@@ -718,14 +718,18 @@ void distributed_graph<VertexData, EdgeData>::conditional_update_edge_data_and_v
   vertex_id_t localsourcevid = global2localvid[source];
   vertex_id_t localtargetvid = global2localvid[target];
   std::pair<bool, edge_id_t> findret = localstore.find(localsourcevid, localtargetvid);
-  assert(findret.first);
-  if (estore.hasdata && estore.data.second >= localstore.edge_version(findret.second)) {
-    localstore.edge_data(findret.second) = estore.data.first;
-    localstore.set_edge_version(findret.second, estore.data.second);
+  if (findret.first == false) {
+    logstream(LOG_FATAL) << "Receiving edge I do not recognize: (" << source << ","<<target << ") from proc " << srcproc << std::endl;
+    ASSERT_TRUE(findret.first);
+  }
 #ifdef DGRAPH_DEBUG
   logstream(LOG_DEBUG) << "Receiving edge (" << source << ","<<target << ") from proc " << srcproc << ". "
                        << estore.data.second << " vs " << localstore.edge_version(findret.second) << std::endl;
 #endif
+
+  if (estore.hasdata && estore.data.second >= localstore.edge_version(findret.second)) {
+    localstore.edge_data(findret.second) = estore.data.first;
+    localstore.set_edge_version(findret.second, estore.data.second);
   }
   if (srcproc != procid_t(-1)) {
     rmi.dc().remote_call(srcproc, reply_increment_counter, reply, dc_impl::blob());
@@ -835,7 +839,7 @@ void distributed_graph<VertexData, EdgeData>::push_owned_edge_to_replicas(edge_i
 
   if (!edge_canonical_numbering) {
 #ifdef DGRAPH_DEBUG
-    logger(LOG_DEBUG, "Pushing edge %d to proc %d", eid, sendto);
+    logstream(LOG_DEBUG) << "Pushing edge " << eid << " to proc " << sendto << std::endl;
 #endif
     rmi.remote_call(sendto,
                     &distributed_graph<VertexData, EdgeData>::conditional_update_edge_data_and_version,
@@ -845,6 +849,9 @@ void distributed_graph<VertexData, EdgeData>::push_owned_edge_to_replicas(edge_i
                     retptr);
   }
   else {
+#ifdef DGRAPH_DEBUG
+    logstream(LOG_DEBUG) << "Pushing edge (" << globalsource << ", " << globaltarget << ") to proc " << sendto << std::endl;
+#endif
     rmi.remote_call(sendto,
                     &distributed_graph<VertexData, EdgeData>::conditional_update_edge_data_and_version2,
                     globalsource,
@@ -855,19 +862,129 @@ void distributed_graph<VertexData, EdgeData>::push_owned_edge_to_replicas(edge_i
   }
   if (async == false && untracked == false)  ret.wait();
 }
+
+
 template <typename VertexData, typename EdgeData>
-void distributed_graph<VertexData, EdgeData>::push_all_owned_vertices_to_replicas(bool async, bool untracked) {
-  foreach(vertex_id_t v, boundary_scopes()) {
-    push_owned_vertex_to_replicas(v, async, untracked);
+void distributed_graph<VertexData, EdgeData>::push_all_owned_vertices_to_replicas() {
+  // perform block collective
+  std::vector<block_synchronize_request> blockpushes(rmi.numprocs()); 
+
+  foreach(vertex_id_t vid, boundary_scopes()) {
+
+    vertex_id_t localvid = global2localvid[vid];
+    // get the replicas
+    const std::vector<procid_t>& replicas = localvid_to_replicas(localvid);
+    // owner is a replica too. if there are no other replicas quit
+    if (replicas.size() <= 1) continue;
+  
+ 
+   // build the store
+    vertex_conditional_store vstore;
+    vstore.hasdata = true;
+    vstore.data.first = localstore.vertex_data(localvid);
+    vstore.data.second = localstore.vertex_version(localvid);
+  
+    foreach(procid_t proc, replicas) {
+      if (proc != rmi.procid()) {
+        blockpushes[proc].vid.push_back(vid);
+        blockpushes[proc].vidversion.push_back(localstore.vertex_version(localvid));
+        blockpushes[proc].vstore.push_back(vstore);
+        if (blockpushes[proc].vid.size() >= 1024*1024/sizeof(VertexData)) {
+          rmi.remote_call(proc,
+                          &distributed_graph<VertexData, EdgeData>::update_alot,
+                          blockpushes[proc]);
+          blockpushes[proc].clear();
+        }
+      }
+    }
+  }
+
+  for(size_t proc = 0; proc < rmi.numprocs(); ++proc) {
+    if (blockpushes[proc].vid.size() > 0) {
+      assert(proc != rmi.procid());
+      rmi.remote_call(proc,
+                      &distributed_graph<VertexData, EdgeData>::update_alot,
+                      blockpushes[proc]);
+      blockpushes[proc].clear();
+    }
   }
 }
 
 template <typename VertexData, typename EdgeData>
-void distributed_graph<VertexData, EdgeData>::push_all_owned_edges_to_replicas(bool async, bool untracked) {
-  foreach(vertex_id_t v, boundary_scopes()) {
-    foreach(edge_id_t eid, in_edge_ids(v)) {
-      push_owned_edge_to_replicas(eid, async, untracked);
+void distributed_graph<VertexData, EdgeData>::push_all_owned_edges_to_replicas() {
+  if (edge_canonical_numbering == false) {
+    // perform block collective
+    // TODO: synchronize this block here with the bottom (bottom is newer)
+    std::vector<block_synchronize_request> blockpushes(rmi.numprocs()); 
+
+    foreach(vertex_id_t vid, boundary_scopes()) {
+      foreach(edge_id_t eid, in_edge_ids(vid)) {
+        edge_id_t localeid = global2localeid[eid];
+        procid_t proc = localvid2owner[global2localvid[source(eid)]];
+        if (proc == rmi.procid()) continue;
+
+        edge_conditional_store estore;
+        estore.hasdata = true;
+        estore.data.first = localstore.edge_data(localeid);
+        estore.data.second = localstore.edge_version(localeid);
+   
+
+        blockpushes[proc].eid.push_back(eid);
+        blockpushes[proc].edgeversion.push_back(localstore.edge_version(localeid));
+        blockpushes[proc].estore.push_back(estore);
+        if (blockpushes[proc].eid.size() >= 1*1024*1024/sizeof(EdgeData)) {
+          rmi.remote_call(proc,
+                          &distributed_graph<VertexData, EdgeData>::update_alot,
+                          blockpushes[proc]);
+          blockpushes[proc].clear();
+        }
+      }
     }
+    for(size_t proc = 0; proc < rmi.numprocs(); ++proc) {
+      if (blockpushes[proc].eid.size() > 0) {
+        assert(proc != rmi.procid());
+        rmi.remote_call(proc,
+                        &distributed_graph<VertexData, EdgeData>::update_alot,
+                        blockpushes[proc]);
+        blockpushes[proc].clear();
+      }
+    }
+  }
+  else {
+    std::vector<block_synchronize_request2> blockpushes(rmi.numprocs()); 
+
+    foreach(vertex_id_t vid, ghost_vertices()) {
+      vertex_id_t localvid = global2localvid[vid];
+      procid_t proc = localvid2owner[localvid];
+      foreach(edge_id_t localeid, localstore.out_edge_ids(localvid)) {
+        vertex_id_t targetvid = local2globalvid[localstore.target(localeid)];
+        edge_conditional_store estore;
+        estore.hasdata = true;
+        estore.data.first = localstore.edge_data(localeid);
+        estore.data.second = localstore.edge_version(localeid);
+   
+
+        blockpushes[proc].srcdest.push_back(std::make_pair<vertex_id_t, vertex_id_t>(vid, targetvid));
+        blockpushes[proc].edgeversion.push_back(localstore.edge_version(localeid));
+        blockpushes[proc].estore.push_back(estore);
+        if (blockpushes[proc].srcdest.size() >= 1*1024*1024/sizeof(EdgeData)) {
+          rmi.remote_call(proc,
+                          &distributed_graph<VertexData, EdgeData>::update_alot2,
+                          blockpushes[proc]);
+          blockpushes[proc].clear();
+        }
+      }
+    }
+    for(size_t proc = 0; proc < rmi.numprocs(); ++proc) {
+      if (blockpushes[proc].srcdest.size() > 0) {
+        assert(proc != rmi.procid());
+        rmi.remote_call(proc,
+                        &distributed_graph<VertexData, EdgeData>::update_alot2,
+                        blockpushes[proc]);
+        blockpushes[proc].clear();
+      }
+    }
+
   }
 }
 
