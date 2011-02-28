@@ -1,5 +1,5 @@
-#ifndef GRAPHLAB_ATOM_SHUFFLER_HPP
-#define GRAPHLAB_ATOM_SHUFFLER_HPP
+#ifndef GRAPHLAB_ALIST_SHUFFLER_HPP
+#define GRAPHLAB_ALIST_SHUFFLER_HPP
 
 
 
@@ -9,17 +9,18 @@
 #include <fstream>
 #include <algorithm>
 #include <iomanip>
+#include <omp.h>
 
 #include <boost/unordered_map.hpp>
 #include <boost/unordered_set.hpp>
 #include <boost/filesystem.hpp>
 
+#include <graphlab/logger/assertions.hpp>
 #include <graphlab/util/timer.hpp>
 #include <graphlab/graph/graph.hpp>
 #include <graphlab/rpc/dc.hpp>
 #include <graphlab/rpc/dc_init_from_env.hpp>
 #include <graphlab/rpc/dc_init_from_mpi.hpp>
-
 #include <graphlab/logger/logger.hpp>
 #include <graphlab/serialization/serialization_includes.hpp>
 #include <graphlab/util/dense_bitset.hpp>
@@ -34,18 +35,18 @@
 #include <graphlab/macros_def.hpp>
 namespace graphlab {
 
-
+  
 
   /**
    *  The atom shuffler is a distributed object that behaves like a
    *  smart DHT for atom_file construction.
    */
   template <typename VertexData, typename EdgeData>
-  class atom_shuffler {
+  class alist_shuffler {
   public:
     typedef VertexData vertex_data_type;
     typedef EdgeData edge_data_type;
-    typedef atom_shuffler<VertexData, EdgeData> atom_shuffler_type;
+    typedef alist_shuffler<VertexData, EdgeData> alist_shuffler_type;
     typedef atom_file<VertexData, EdgeData> atom_file_type;
     typedef boost::unordered_map<vertex_id_t, vertex_id_t> global2local_type;
 
@@ -67,12 +68,43 @@ namespace graphlab {
 
     typedef std::vector< atom_info* > atom_map_type;    
 
-        
+    struct nbr_args {
+      vertex_id_t vid;
+      procid_t nbr_atom;
+      nbr_args(const vertex_id_t& vid = 0, 
+               const procid_t& nbr_atom = 0) :
+        vid(vid), nbr_atom(nbr_atom) { }
+      void load(iarchive& iarc) {
+        iarc >> vid >> nbr_atom;
+      }
+      void save(oarchive& oarc) const {
+        oarc << vid << nbr_atom;
+      }
+    }; // end of struct args
+
+    struct vertex_args {
+      vertex_id_t vid;
+      //      procid_t atomid;
+      //      vertex_color_type vcolor;
+      vertex_data_type vdata;
+      vertex_args() : vid(-1) { }
+      vertex_args(const vertex_id_t vid,
+                  const vertex_data_type& vdata) :
+        vid(vid), vdata(vdata) { } 
+      void load(iarchive& iarc) {
+        iarc >> vid >> vdata;
+      }
+      void save(oarchive& oarc) const {
+        oarc << vid << vdata;
+      }
+    }; // end of struct args
+
+
+
+
 
   private:
-
-
-    dc_dist_object< atom_shuffler_type > rmi;
+    dc_dist_object< alist_shuffler_type > rmi;
 
     size_t num_colors;
     std::vector<vertex_color_type> vertex2color;
@@ -83,20 +115,21 @@ namespace graphlab {
     
     adjacency_list alist;
     std::vector< vertex_id_t > vertex2proc;
-    std::vector< boost::unordered_set< procid_t > >  neighbor_atoms;
-    std::vector< graphlab::mutex > neighbor_locks;
+    std::vector< boost::unordered_set< procid_t > >  nbr_atoms;
+    std::vector< graphlab::mutex > nbr_locks;
 
     atom_map_type atomid2info;
     std::vector<graphlab::mutex> atomid2lock;
 
 
 
+
   public:
-    atom_shuffler(distributed_control& dc) : rmi(dc, this) { }
+    alist_shuffler(distributed_control& dc) : rmi(dc, this) { }
 
 
 
-    ~atom_shuffler() {
+    ~alist_shuffler() {
       rmi.full_barrier();
       // Clear the atom info map
       for(size_t i = 0; i < atomid2info.size(); ++i) {
@@ -111,51 +144,56 @@ namespace graphlab {
 
 
 
-    void add_neighbor_atom(const vertex_id_t vid, 
-                           const procid_t neighbor_atom) {
-      // if vid is stored locally
-      if(vertex2proc[vid] == rmi.procid() ) {
-        add_neighbor_atom_local(vid, neighbor_atom);
-      } else {
-        // remote add
-        rmi.remote_call(vertex2proc[vid],
-                        &atom_shuffler_type::add_neighbor_atom_local,
-                        vid, neighbor_atom);
-      }
-    } // end of add atom neighbor
 
 
-    void add_neighbor_atom_local(const vertex_id_t vid, 
-                                 const procid_t neighbor_atom) {
-      assert(vid < vertex2proc.size());
-      assert(vertex2proc[vid] == rmi.procid());
-      assert(neighbor_atom < num_atoms);
+ 
+    
+    
+    void add_nbr_atom_local_vec(const std::vector<nbr_args>& args) {
+      for(size_t i = 0; i < args.size(); ++i)
+        add_nbr_atom_local(args[i].vid, args[i].nbr_atom);
+    } // end of add atom nbr local
+
+
+    void add_nbr_atom_local(const vertex_id_t vid, 
+                            const procid_t nbr_atom) {
+      ASSERT_LT(vid, vertex2proc.size());
+      ASSERT_EQ(vertex2proc[vid], rmi.procid());
+      ASSERT_LT(nbr_atom, num_atoms);
       // convert to the local vertex id address
-      assert(alist.global2local.find(vid) != alist.global2local.end());
-      vertex_id_t localvid = alist.global2local[vid];
+      assert(alist.global2local.find(vid) !=
+             alist.global2local.end());
+      const vertex_id_t localvid( alist.global2local[vid] );
 
-      assert(localvid < neighbor_atoms.size());
-      assert(localvid < neighbor_locks.size());
-      neighbor_locks[localvid].lock();
-      neighbor_atoms[localvid].insert(neighbor_atom);
-      neighbor_locks[localvid].unlock();
-    } // end of add atom neighbor local
+      ASSERT_LT(localvid, nbr_atoms.size());
+      ASSERT_LT(localvid, nbr_locks.size());
+      nbr_locks[localvid].lock();
+      nbr_atoms[localvid].insert(nbr_atom);
+      nbr_locks[localvid].unlock();
+    } // end of add atom nbr local
 
       
 
-    void add_vertex_local(const procid_t& to_atomid,
-                          const vertex_id_t& gvid,
-                          const procid_t& atomid,
-                          const vertex_color_type& vcolor,
+    void add_vertex_local_vec(const std::vector<vertex_args>& args) {
+      for(size_t i = 0; i < args.size(); ++i) 
+        add_vertex_local(args[i].vid, args[i].vdata);
+    }
+     
+
+
+    void add_vertex_local(const vertex_id_t& gvid,
                           const vertex_data_type& vdata) {
-      assert(is_local(to_atomid));
-      assert(to_atomid < atomid2lock.size());
-      atomid2lock[to_atomid].lock();
+      const procid_t atomid(vertex2atomid.at(gvid));
+      const vertex_color_type vcolor(vertex2color.at(gvid));
+      ASSERT_TRUE(is_local(atomid));
+      ASSERT_LT(atomid, atomid2lock.size());
+      atomid2lock[atomid].lock();
       // Get the atom info
-      atom_info& ainfo(get_atom_info(to_atomid));
+      atom_info& ainfo(get_atom_info(atomid));
       // test to see if the vertex has been added already
-      if(ainfo.global2local.find(gvid) == ainfo.global2local.end()) { // first add
-        vertex_id_t localvid = ainfo.atom_file.globalvids().size();
+      if(ainfo.global2local.find(gvid) == ainfo.global2local.end()) { 
+        // first add
+        const vertex_id_t localvid(ainfo.atom_file.globalvids().size());
         ainfo.atom_file.globalvids().push_back(gvid);
         ainfo.atom_file.vcolor().push_back(vcolor);
         ainfo.atom_file.atom().push_back(atomid);
@@ -166,7 +204,7 @@ namespace graphlab {
           oarc << vdata;
         }
       }
-      atomid2lock[to_atomid].unlock();
+      atomid2lock[atomid].unlock();
     }
 
     void add_vertex(const procid_t& to_atomid,
@@ -181,7 +219,7 @@ namespace graphlab {
       } else {
         // remote add
         rmi.remote_call(owning_machine(to_atomid),
-                        &atom_shuffler_type::add_vertex_local,
+                        &alist_shuffler_type::add_vertex_local,
                         to_atomid, gvid, atomid, vcolor, vdata);
       }
     } // end of add_vertex
@@ -218,7 +256,7 @@ namespace graphlab {
         add_edge_local(to_atomid, source_gvid, target_gvid, edata);
       } else {
         rmi.remote_call(owning_machine(to_atomid),
-                        &atom_shuffler_type::add_edge_local,
+                        &alist_shuffler_type::add_edge_local,
                         to_atomid, source_gvid, target_gvid, edata);
 
       }
@@ -267,8 +305,8 @@ namespace graphlab {
         rmi.all_gather(gather_count);
         for(size_t i = 0; i < gather_count.size(); ++i) 
           nverts += gather_count.at(i);
-        for(size_t i = 0; i < alist.in_neighbor_ids.size(); ++i) 
-          nedges += alist.in_neighbor_ids.at(i).size();
+        for(size_t i = 0; i < alist.in_nbr_ids.size(); ++i) 
+          nedges += alist.in_nbr_ids.at(i).size();
         gather_count.at(rmi.procid()) = nedges;
         rmi.all_gather(gather_count);
         nedges = 0;
@@ -368,19 +406,19 @@ namespace graphlab {
 
 
       {
+        std::cout << "Checking all local values."
+                  << std::endl;
         // check the vertices in the alists
         for(size_t i = 0; i < alist.local_vertices.size(); ++i) {
           ASSERT_LT(alist.local_vertices[i], vertex2atomid.size());
         }
         // resize auxiliarary datastructures
-        assert(alist.in_neighbor_ids.size() == alist.local_vertices.size());
+        assert(alist.in_nbr_ids.size() == alist.local_vertices.size());
         assert(alist.global2local.size() == alist.local_vertices.size());
-        neighbor_atoms.resize(alist.local_vertices.size());
-        neighbor_locks.resize(alist.local_vertices.size());
+        nbr_atoms.resize(alist.local_vertices.size());
+        nbr_locks.resize(alist.local_vertices.size());
+        assert(vertex2atomid.size() == vertex2color.size());
       }
-
-
-      assert(vertex2atomid.size() == vertex2color.size());
       if(rmi.procid() == 0) 
         std::cout << "Vertices: " << vertex2color.size() << std::endl;
       
@@ -430,22 +468,68 @@ namespace graphlab {
       
       rmi.full_barrier();
       
-      { // compute neighbor atoms for all local vertices ======================
+      { // compute nbr atoms for all local vertices ======================
         if(rmi.procid() == 0) 
-          std::cout << "Computing atom neighbors for each vertex."
+          std::cout << "Computing atom nbrs for each vertex."
                     << std::endl;
-        for(size_t i = 0; i < alist.in_neighbor_ids.size(); ++i) {
-          assert(i < alist.local_vertices.size());
-          vertex_id_t target = alist.local_vertices[i];
-          assert(target < vertex2atomid.size());
-          for(size_t j = 0; j < alist.in_neighbor_ids[i].size(); ++j) {
-            vertex_id_t source = alist.in_neighbor_ids[i][j];
-            assert(source < vertex2atomid.size());
-            add_neighbor_atom(target, vertex2atomid[source]);
-            add_neighbor_atom(source, vertex2atomid[target]);
-          }
+
+        typedef nbr_args args;
+        const size_t nthreads(8);
+        const size_t ONE_MB(size_t(1) << 20);
+        const size_t BUFFER_SIZE(ONE_MB / sizeof(args));
+        std::vector< std::vector<args> > 
+          proc2buffer(nthreads * rmi.numprocs());
+#pragma omp parallel for num_threads(nthreads) 
+        for(long i = 0; i < long(alist.in_nbr_ids.size()); ++i) {
+          const int threadid = omp_get_thread_num();
+          const vertex_id_t target(alist.local_vertices.at(i));
+          const procid_t target_proc(vertex2proc.at(target));
+          const procid_t target_atom(vertex2atomid.at(target));
+          const size_t target_idx(target_proc + threadid * rmi.numprocs());
+          for(size_t j = 0; j < alist.in_nbr_ids[i].size(); ++j) {
+            const vertex_id_t source(alist.in_nbr_ids[i][j]);
+            const procid_t source_proc(vertex2proc.at(source));
+            const procid_t source_atom(vertex2atomid.at(source));
+            const size_t source_idx(source_proc + threadid * rmi.numprocs());
+            // add source atom to target
+            if(target_proc == rmi.procid()) {
+              add_nbr_atom_local(target, source_atom);
+            } else {
+              proc2buffer.at(target_idx).push_back(args(target, source_atom));
+              if(proc2buffer.at(target_idx).size() > BUFFER_SIZE) {
+                rmi.remote_call(target_proc,
+                                &alist_shuffler_type::add_nbr_atom_local_vec,
+                                proc2buffer.at(target_idx));
+                proc2buffer.at(target_idx).clear();
+              }             
+            } // end of add source atom to target
+            // add target atom to source
+            if(source_proc == rmi.procid()) {
+              add_nbr_atom_local(source, target_atom);
+            } else {
+              proc2buffer.at(source_idx).push_back(args(source, target_atom));
+              if(proc2buffer.at(source_idx).size() > BUFFER_SIZE) {
+                rmi.remote_call(source_proc,
+                                &alist_shuffler_type::add_nbr_atom_local_vec,
+                                proc2buffer.at(source_idx));
+                proc2buffer.at(source_idx).clear();
+              }             
+            } // end of add target atom to source
+          } // end of for loop
+        } // end of parallel for loop 
+        
+        // Do the extra flush
+#pragma omp parallel for num_threads(nthreads)
+        for(long i = 0; i < long(proc2buffer.size()); ++i) {
+          const procid_t target( i % rmi.numprocs() );
+          if(!proc2buffer[i].empty()) {
+            rmi.remote_call(target,
+                            &alist_shuffler_type::add_nbr_atom_local_vec,
+                            proc2buffer[i]);         
+          }          
         }
-      } // end of compute neighbor atoms for all vertices
+      } // end of compute nbr atoms for all vertices
+
 
 
       rmi.full_barrier();
@@ -477,8 +561,8 @@ namespace graphlab {
             { // open edata temporary storage file
               std::stringstream strm;
               strm << path << "/" << "tmp_edata_"
-                 << std::setw(5) << std::setfill('0')
-                 << atomid << ".bin";
+                   << std::setw(5) << std::setfill('0')
+                   << atomid << ".bin";
               ainfo.edatafn = strm.str();
               ainfo.edatastream.open(ainfo.edatafn.c_str(), 
                                      std::ios::binary | std::ios::out |
@@ -489,8 +573,8 @@ namespace graphlab {
             { // determine atom filename
               std::stringstream strm;
               strm << atom_path << "/"  << atom_prefix
-                 << std::setw(5) << std::setfill('0')
-                 << atomid << ".atom";
+                   << std::setw(5) << std::setfill('0')
+                   << atomid << ".atom";
               ainfo.atomfn = strm.str();
             }
             // set the id of the atom_file associated with the atom info
@@ -508,6 +592,11 @@ namespace graphlab {
         if(rmi.procid() == 0) 
           std::cout << "Shuffling vertex data."
                     << std::endl;
+        typedef vertex_args args;
+        const size_t ONE_MB(size_t(1) << 20);
+        const size_t BUFFER_SIZE(ONE_MB / sizeof(args));
+        std::vector< std::vector<args> >  proc2buffer(rmi.numprocs());
+
         size_t localvid(0);
         for(size_t i = 0; i < local_fnames.size(); ++i) {
           // get the vertex data filename from the structure filename
@@ -524,41 +613,37 @@ namespace graphlab {
           graphlab::iarchive iarc(fin);
           vertex_data_type vdata;
           for(iarc >> vdata; fin.good(); iarc >> vdata) {
-            assert(fin.good());
-            assert(localvid < alist.local_vertices.size());
-            vertex_id_t vid = alist.local_vertices[localvid];
-            assert(vid < vertex2atomid.size());
-            assert(vid < vertex2color.size());
-            add_vertex(vertex2atomid[vid],
-                       vid,
-                       vertex2atomid[vid],
-                       vertex2color[vid],
-                       vdata);
-            assert(localvid < neighbor_atoms.size());
-            foreach(procid_t neighbor_atom, neighbor_atoms[localvid]) {
-              assert(neighbor_atom < num_atoms);
-              // if the neighbor is stored in a different atom file
-              // then send the vertex data to the neighbor for
-              // ghosting purposes
-              if(neighbor_atom != vertex2atomid[vid]) {
-                // send the vertex data to the owning atoms
-                add_vertex(neighbor_atom,
-                           vid,
-                           vertex2atomid[vid],
-                           vertex2color[vid],
-                           vdata);
-              } // end of if neighbor is in different atom
-            } // end of loop over neighbors
+            ASSERT_LT(localvid, alist.local_vertices.size());
+            const vertex_id_t vid( alist.local_vertices[localvid] );
+            ASSERT_LT(vid, vertex2atomid.size());
+            const procid_t atomid( vertex2atomid[vid] );
+            if(is_local(atomid)) {
+              add_vertex_local(vid, vdata);
+            } else {
+              const procid_t owner(owning_machine(atomid));
+              proc2buffer[owner].push_back(args(vid, vdata));
+              if(proc2buffer[owner].size() > BUFFER_SIZE) {
+                rmi.remote_call(owner, 
+                                &alist_shuffler::add_vertex_local_vec,
+                                proc2buffer[owner]);
+                proc2buffer[owner].clear();
+              }
+            }
             localvid++; // successful add so increment the local vid counter
           } // end of loop over single vertex data file
           fin.close();
         } // end of loop over all vertex data files
         assert(localvid == alist.local_vertices.size());        
+        // Flush buffers
+        for(size_t i = 0; i < proc2buffer.size(); ++i) {
+          if(!proc2buffer[i].empty()) {
+            rmi.remote_call(i,
+                            &alist_shuffler::add_vertex_local_vec,
+                            proc2buffer[i]);
+          }
+        }
       } // end of shuffle the vertex data
 
-
-      rmi.comm_barrier();
-      rmi.barrier();
 
       rmi.full_barrier();
 
@@ -585,19 +670,19 @@ namespace graphlab {
           assert(fin.good());
           fin.peek();
           while(fin.good()) {
-            assert(localvid < alist.in_neighbor_ids.size());
+            assert(localvid < alist.in_nbr_ids.size());
             vertex_id_t target(alist.local_vertices[localvid]);
             assert(target < vertex2atomid.size());
-            // try to read in all the neighbors
-            for(size_t j = 0; j < alist.in_neighbor_ids[localvid].size(); ++j) {
-              vertex_id_t source(alist.in_neighbor_ids[localvid][j]);
+            // try to read in all the nbrs
+            for(size_t j = 0; j < alist.in_nbr_ids[localvid].size(); ++j) {
+              vertex_id_t source(alist.in_nbr_ids[localvid][j]);
               assert(source < vertex2atomid.size());
               edge_data_type edata;
               iarc >> edata;
               assert(fin.good());
               add_edge(vertex2atomid[source], source, target, edata);
-              if(vertex2atomid[source] != vertex2atomid[target])
-                add_edge(vertex2atomid[target], source, target, edata); 
+              // if(vertex2atomid[source] != vertex2atomid[target])
+              //   add_edge(vertex2atomid[target], source, target, edata); 
             }
             localvid++;
             fin.peek();
@@ -608,9 +693,8 @@ namespace graphlab {
       } // end of shuffle the edge data
 
       std::cout << "Entering final barrier on " << rmi.procid() << std::endl;
-      rmi.comm_barrier();
-      rmi.barrier();
-      rmi.dc().full_barrier();
+
+      rmi.full_barrier();
       std::cout << "Leaving final barrier on " << rmi.procid() << std::endl;
 
 
@@ -743,7 +827,6 @@ namespace graphlab {
         assert(false);
       }
       param.initstring = "buffered_send=yes, ";
-      param.initstring += "buffered_send_delay=1E9";//nanoseconds 
       param.numhandlerthreads = 5;
       distributed_control dc(param);
       dc.full_barrier();      
@@ -752,9 +835,9 @@ namespace graphlab {
         std::cout.flush();
       }
       // Create the atom shuffler
-      atom_shuffler atom_shuffler(dc);
+      alist_shuffler alist_shuffler(dc);
       dc.full_barrier();
-      atom_shuffler.shuffle(path, atom_path);
+      alist_shuffler.shuffle(path, atom_path);
       dc.full_barrier();
       if(dc.procid() == 0) 
         std::cout << "Finished." << std::endl;      
@@ -771,33 +854,7 @@ namespace graphlab {
 
 
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+  
 
 
 
@@ -811,6 +868,20 @@ namespace graphlab {
 
 
 }; // end namespace graphlab
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 #include <graphlab/macros_undef.hpp>
 
 

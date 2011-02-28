@@ -37,6 +37,7 @@ add_library(graphlab_util STATIC
   metrics/metrics.cpp
   util/net_util.cpp
   util/safe_circular_char_buffer.cpp
+  util/fs_util.cpp
   ${util_mpi_tools}
 )
 
@@ -62,6 +63,7 @@ add_library(graphlab_rpc STATIC
   rpc/dc_stream_receive.cpp
   rpc/dc_buffered_stream_send.cpp
   rpc/dc_buffered_stream_send_expqueue.cpp
+  rpc/dc_buffered_stream_send_expqueue2.cpp
   rpc/dc_buffered_stream_receive.cpp
   rpc/dc.cpp
   rpc/reply_increment_counter.cpp

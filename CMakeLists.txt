@@ -145,7 +145,7 @@ endif()
 CHECK_LIBRARY_EXISTS("tcmalloc -lpthread" malloc "" TCMALLOC-FOUND)
 if (TCMALLOC-FOUND)
   message(STATUS "tcmalloc found. Using it everywhere")
-#  link_libraries(tcmalloc)
+  link_libraries(tcmalloc)
 else()
   message(STATUS "tcmalloc was not found but is optional.")
 endif()
@@ -219,7 +219,7 @@ endif(NOT ${CMAKE_SYSTEM} MATCHES Windows)
 
 ### Set the debug flags ----------------------------------------------------->
 # Note: -fkeep-inline-functions significantly slows down the compilation
-set(CMAKE_CXX_FLAGS_DEBUG "-g -ggdb -O0 -Wall -Winit-self  ") 
+set(CMAKE_CXX_FLAGS_DEBUG "-g -ggdb -O0 -Wall -Winit-self -fopenmp -lgomp ") 
 #-fno-implicit-templates")
 ### Set the release flags --------------------------------------------------->
 if (CROSS_COMPILE_32_BIT MATCHES 1)
@@ -231,13 +231,13 @@ else(CROSS_COMPILE_32_BIT MATCHES 1)
   
   # Set the C compiler flags in release mode on 64bit systems
   set(CMAKE_C_FLAGS_RELEASE 
-    "-O3 -Wall -g -mfpmath=sse -msse2 -funroll-loops -fprefetch-loop-arrays ")
+    "-O3 -Wall -g -mfpmath=sse -msse2 -funroll-loops -fprefetch-loop-arrays -fopenmp -lgomp ")
   if (COMPILE_PROFILING MATCHES 1) 
     set(CMAKE_CXX_FLAGS_RELEASE 
-      "-O2 -Wall -g -mfpmath=sse -msse2 -fprefetch-loop-arrays -pg ")
+      "-O2 -Wall -g -mfpmath=sse -msse2 -fprefetch-loop-arrays -pg -fopenmp -lgomp ")
   else(COMPILE_PROFILING MATCHES 1)
     set(CMAKE_CXX_FLAGS_RELEASE 
-      "-O3 -Wall -g -mfpmath=sse -msse2 -funroll-loops -fprefetch-loop-arrays ")
+      "-O3 -Wall -g -mfpmath=sse -msse2 -funroll-loops -fprefetch-loop-arrays -fopenmp -lgomp ")
   endif(COMPILE_PROFILING MATCHES 1)
 
 endif(CROSS_COMPILE_32_BIT MATCHES 1)
