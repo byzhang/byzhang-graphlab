@@ -144,6 +144,10 @@ class distributed_graph {
   size_t num_vertices() const{
       return numglobalverts;
   }
+  
+  size_t local_vertices() const {
+    return owned_vertices().size();
+  }
 
   /**
    * Returns the number of edges in the graph.
@@ -438,6 +442,10 @@ class distributed_graph {
     return boundaryscopesset;
   }
   
+  bool on_boundary(vertex_id_t vid) const{
+    return boundaryscopesset.find(vid) != boundaryscopesset.end();
+  }
+ 
   const std::vector<vertex_id_t>& ghost_vertices() const{
     return ghostvertices;
   }
@@ -786,6 +794,27 @@ class distributed_graph {
     }
   }
 
+
+  /** 
+   * Get (and cache) the number of colors
+   */
+  size_t recompute_num_colors() {
+    vertex_color_type max_color(0);
+    for(size_t i = 0; i < global2localvid.size(); ++i) 
+      max_color = std::max(max_color, localstore.color(global2localvid[i]));
+    std::vector<vertex_color_type> proc2colors(rmi.numprocs());
+    proc2colors[rmi.procid()] = max_color +1;
+    rmi.all_gather(proc2colors);
+    numcolors = 0;
+    for(size_t i = 0; i < proc2colors.size(); ++i)  
+      numcolors += proc2colors[i];
+    return numcolors;
+  }
+
+  /**
+   * This function should only be called after the number of colors
+   * has be computed
+   */
   size_t num_colors() const {
     return numcolors;
   }
@@ -794,7 +823,7 @@ class distributed_graph {
    * Gets a reference to the color on vertex vid.
    * Assertion failure if vid is not on this machine.
    */
-  const vertex_color_type& color(vertex_id_t vid) {
+  vertex_color_type& color(vertex_id_t vid) {
     assert(global_vid_in_local_fragment(vid));
     return localstore.color(global2localvid[vid]);
   }
@@ -1049,7 +1078,7 @@ class distributed_graph {
   
   
   struct async_scope_callback {
-    atomic<size_t> counter;
+    atomic<unsigned short> counter;
     boost::function<void (void)> callback;
   };
   std::vector<async_scope_callback> scope_callbacks;
@@ -1120,7 +1149,7 @@ class distributed_graph {
     std::vector<std::pair<bool, vertex_id_t> > globalvid_notowned_zip;
     for (size_t i = 0;i < atomfiles.size(); ++i) {
       for (size_t j = 0;j < atomfiles[i]->globalvids().size(); ++j) {
-        globalvid_notowned_zip.push_back(std::make_pair(atomfiles[i]->atom()[j] == rmi.procid(),
+        globalvid_notowned_zip.push_back(std::make_pair(atoms_in_curpart_set.get(atomfiles[i]->atom()[j]),
                                                         atomfiles[i]->globalvids()[j]));
       }
     }
