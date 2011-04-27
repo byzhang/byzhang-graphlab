@@ -1,0 +1,20 @@
+#undef __GLRPC_NIF0
+#undef __GLRPC_NIF1
+#undef __GLRPC_NIF2
+#undef __GLRPC_NIF3
+#undef __GLRPC_NIF4
+#undef __GLRPC_NIF5
+#undef __GLRPC_NIF6
+#undef __GLRPC_NIF7
+#undef __GLRPC_R0
+#undef __GLRPC_R1
+#undef __GLRPC_R2
+#undef __GLRPC_R3
+#undef __GLRPC_R4
+#undef __GLRPC_R5
+#undef __GLRPC_R6
+#undef __GLRPC_R7
+
+#undef __GLRPC_FRESULT
+#undef REMOVE_CONST_REF
+#undef __GLRPC_FARITY
