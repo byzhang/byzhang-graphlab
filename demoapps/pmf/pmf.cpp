@@ -39,6 +39,8 @@ bool regnormal = false; //regular normalization
 bool aggregatevalidation = false;
 extern bool finish; //defined in convergence.hpp
 int iiter = 1;//count number of time zero node run
+double scalerating = 0; //scale the rating by dividing to the scalerating factor (optional)
+int delayalpha = 0; //delay alpha sampling (optional, for BPTF)
 
 /* Variables for PMF */
 int M,N,K,L;//training size: users, movies, times, number of edges
@@ -790,24 +792,27 @@ void export_uvt_to_file(){
  for (int i=0; i< M+N; i++){ 
     vertex_data & data = g->vertex_data(i);
     if (i < M)
-     	memcpy(U._data() + i*D, data.pvec._data(), D*sizeof(double));
+	U.set_row(i, data.pvec);
+      	//memcpy(U._data() + i*D, data.pvec._data(), D*sizeof(double));
     else
-     	memcpy(V._data() + (i-M)*D, data.pvec._data(), D*sizeof(double));
+	V.set_row(i-M, data.pvec);
+     	//memcpy(V._data() + (i-M)*D, data.pvec._data(), D*sizeof(double));
  }
 
  if (tensor){ 
     for (int i=0; i<K; i++){
-     	memcpy(T._data() + i*D, times[i].pvec._data(), D*sizeof(double));
+     	T.set_row(i, times[i].pvec);
+	//memcpy(T._data() + i*D, times[i].pvec._data(), D*sizeof(double));
     }
  } 
 
  char dfile[256] = {0};
  sprintf(dfile,"%s%d.out",infile.c_str(), D);
  it_file output(dfile);
- output << Name("U") << U;
- output << Name("V") << V;
+ output << Name("User") << U;
+ output << Name("Movie") << V;
   if (tensor){
-    output << Name("T") << T;
+    output << Name("Time") << T;
  }
  output.close();
 }
@@ -868,6 +873,8 @@ void start(int argc, char ** argv) {
   clopts.attach_option("stats", &stats, stats, "compute graph statistics");  
   clopts.attach_option("alpha", &alpha, alpha, "BPTF alpha (noise parameter)");  
   clopts.attach_option("regnormal", &regnormal, regnormal, "regular normalization? ");  
+  clopts.attach_option("scalerating", &scalerating, scalerating, "scale rating value ");  
+  clopts.attach_option("delayalpha", &delayalpha, delayalpha, "start sampling alpha the delayalpha round ");  
   clopts.attach_option("aggregatevalidation", &aggregatevalidation, aggregatevalidation, "aggregate training and validation into one dataset ");  
  
   gl_types::core glcore;
@@ -967,7 +974,7 @@ void start(int argc, char ** argv) {
 
 
   if (BPTF){
-    if (alpha == 0)
+    if (delayalpha > iiter)
     	sample_alpha(L);
     sample_U();
     sample_V();
@@ -1038,6 +1045,8 @@ int read_mult_edges(FILE * f, int nodes, testtype type, graph_type * _g, bool sy
       assert((int)ed[i].to >= 1 && (int)ed[i].to <= nodes);
       assert((int)ed[i].to != (int)ed[i].from);
       edge.weight = (double)ed[i].weight;
+      if (scalerating)
+	edge.weight /= scalerating;
       edge.time = (int)((ed[i].time -1-truncating)/scaling);
  
       std::pair<bool, edge_id_t> ret;
@@ -1094,14 +1103,25 @@ void load_pmf_graph(const char* filename, graph_type * _g, testtype data_type,gl
     return;
   }
 
-  assert(f!= NULL);
+  if(data_type==TRAINING && f== NULL){
+	logstream(LOG_ERROR) << " can not find input file. aborting " << std::endl;
+	exit(1);
+  }
 
-  fread(&M,1,4,f);//movies
-  fread(&N,1,4,f);//users/
-  fread(&K,1,4,f);//time
-  assert(K>=1);
-  assert(M>=1 && N>=1); 
+  int _M,_N,_K;
+  fread(&_M,1,4,f);//movies
+  fread(&_N,1,4,f);//users/
+  fread(&_K,1,4,f);//time
+  assert(_K>=1);
+  assert(_M>=1 && _N>=1); 
+  if (data_type != TRAINING && M != _M)
+	logstream(LOG_WARNING) << " wrong number of users: " << _M << " instead of " << M << " in training file" << std::endl;
+  if (data_type != TRAINING && N != _N)
+	logstream(LOG_WARNING) << " wrong number of movies: " << _N << " instead of " << M << " in training file" << std::endl;
+  if (data_type != TRAINING && K != _K)
+	logstream(LOG_WARNING) << " wrong number of time bins: " << _K << " instead of " << K << " in training file" << std::endl;
 
+  M=_M; N= _N; K= _K;
   K=ceil((K-truncating)/scaling);
 
   //if (data_type==TRAINING)
@@ -1208,14 +1228,13 @@ int main(int argc,  char *argv[]) {
   global_logger().set_log_level(LOG_INFO);
   global_logger().set_log_to_console(true);
 
-  infile = argv[1];
-
-  if (infile == "" || argc <= 2) {
-    std::cout << "PMF <input file> <run mode [0-4]>\n";
-    return 0;
-  }
-  
+  if (argc < 3){
+       logstream(LOG_ERROR) <<  "Not enough input arguments. Usage is ./pmf <input file name> <run mode> \n \tRun mode are: \n\t0 = Matrix factorization using alternating least squares \n\t1 = Matrix factorization using MCMC procedure \n\t2 = Tensor factorization using MCMC procedure, single edge exist between user and movies \n\t3 = Tensor factorization, using MCMC procedure with support for multiple edges between user and movies in different times \n\t4 = Tensor factorization using alternating least squars\n";  
+       exit(1);
+   }
+   
    // select tun mode
+  infile = argv[1];
   options = (runmodes)atoi(argv[2]);
   printf("Setting run mode %s\n", runmodesname[options]);
   switch(options){
@@ -1405,7 +1424,10 @@ void export_kdd_format(graph_type * _g, bool dosave) {
        }
      }
 
-   assert(lineNum==ExpectedTestSize);  
+   assert(lineNum==Lt); 
+   if (lineNum!= ExpectedTestSize)
+	logstream(LOG_WARNING) << "KDD test data has wrong length." << " current length is: " << Lt << " correct length " << ExpectedTestSize << std::endl;
+ 
   if (dosave){
     fclose(outFp);
     fprintf(stderr, "**Completed successfully (mean prediction: %lf)**\n",sumPreds/ExpectedTestSize);
