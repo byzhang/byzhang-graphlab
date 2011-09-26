@@ -124,7 +124,8 @@ enum runmodes{
 //counters for debugging running time of different modules
 enum countervals{
    EDGE_TRAVERSAL=0,
-   NODE_TRAVERSAL=1
+   NODE_TRAVERSAL=1,
+   RECOMPUTE_EXP_AX_LOGREG=2
 };
 
 class problem_setup{
@@ -148,6 +149,8 @@ public:
   int cdn_neg_y; //number of negative training instances
   int cdn_pos_y; //number of positive training instances
   unsigned long long int shotgun_numshoots;
+  double last_cost; //keep track of last cost function
+
   //vectors for storing the output
   std::vector<double> means;
   std::vector<double> prec;

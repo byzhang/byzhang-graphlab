@@ -69,7 +69,7 @@ bool regnormal; //regular normalization
 int bptf_delay_alpha; //delay alpha sampling (optional, for BPTF)
 int bptf_burn_in; //burn-in priod (for MCMC sampling - optional)
 double bptf_alpha;
-
+bool bptf_additional_output; //export factor matrices on each iteration (and not just at the end).
 /* Variables for SVD++ */
 float svdpp_step_dec;//step decrement size for SVD++
 
@@ -107,8 +107,14 @@ int shotgun_max_linesearch_iter;
 double shotgun_beta;
 double shotgun_sigma;
 
+/* for shutgun lasso */
+int shotgun_reg_path_len; //regulariztion path length
+
 /* for clustering */
 int distance_measure;
+
+/* random shuffle order of execution? */
+bool shuffle;
 
 advanced_config(){
     D = 20;
@@ -156,6 +162,8 @@ advanced_config(){
     bptf_delay_alpha = 0;
     bptf_burn_in = 10;
     bptf_alpha = 0;
+    bptf_additional_output = false;
+
     regularization = 0;
   /* Variables for SVD++ */
     svdpp_step_dec = 0.9;//step decrement size for SVD++
@@ -195,9 +203,14 @@ advanced_config(){
    shotgun_max_linesearch_iter = 20;
    shotgun_beta = 0.5;
    shotgun_sigma = 0.01;
+
+   /* for shotgun lasso */
+   shotgun_reg_path_len = 0;
  
    /* for LDA */
    em_max_inner_iter = 20;
+
+   shuffle = false;
  }
 
 

@@ -28,6 +28,7 @@ void advanced_config::init_command_line_options(graphlab::command_line_options &
   clopts.attach_option("bptf_alpha", &bptf_alpha, bptf_alpha, "BPTF alpha (noise parameter)");  
   clopts.attach_option("bptf_burn_in", &bptf_burn_in, bptf_burn_in, "BPTF burn-in period");
   clopts.attach_option("bptf_delay_alpha", &bptf_delay_alpha, bptf_delay_alpha, "BPTF start sampling alpha (noise level) the bptf_delay_alpha round ");  
+  clopts.attach_option("bptf_additional_output", &bptf_additional_output, bptf_additional_output, "BPTF: export factor matrices on each iteration (and not just at the end)");  
   
   //ALS related switches
   clopts.attach_option("regnormal", &regnormal, regnormal, "ALS - use identical normalization for each variable? (default is weighted regularization by the number of edges");  
@@ -64,7 +65,9 @@ void advanced_config::init_command_line_options(graphlab::command_line_options &
   clopts.attach_option("lasso_max_iter", &lasso_max_iter, lasso_max_iter, "max iter for lasso sparsity (run modes 10-12)");
 
 
-}
+  clopts.attach_option("shuffle", &shuffle, shuffle, "shuffle order of execution at random");
+  clopts.attach_option("max_iter", &iter,iter, "maximal number of iterations (when round robin is used, used --scheduler=\"round_robin(max_iterations=XX,block_size=1)\")  ");
+}  
 
 
 
