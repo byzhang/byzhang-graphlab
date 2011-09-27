@@ -15,18 +15,32 @@ using namespace std;
 
 void calc_initial_degree(){
   g = ps.g<graph_type_kcores>();
-  for (int i=0; i<ps.M; i++){
+  for (int i=0; i<ps.M+ps.N; i++){
      kcores_data & data = g->vertex_data(i);
      data.degree = g->out_edge_ids(i).size();
   }
 }
 
+void last_iter_kcores(){
+  int num_active = 0;
+  for (int i=0; i<ps.M+ps.N; i++){
+    if (g->vertex_data(i).active)
+	num_active++;
+  }
+  printf("Number of active nodes in round %d is %d\n", ps.iiter, num_active);
+}
+
 void kcores_update_function(gl_types_kcores::iscope & scope, gl_types_kcores::icallback & scheduler){
+    bool last_node = false;
+    if ((int)scope.vertex() == ps.M+ps.N-1)
+        last_node = true; 
 
     kcores_data & vdata = scope.vertex_data();
-    if (!vdata.active)
+    if (!vdata.active){
+       if (last_node)
+          last_iter_kcores();
        return;
-
+    }
     int cur_iter = ps.iiter + 1;
     if (vdata.degree <= cur_iter){
        vdata.active = false;
@@ -46,16 +60,23 @@ void kcores_update_function(gl_types_kcores::iscope & scope, gl_types_kcores::ic
         vdata.kcore = cur_iter;
         vdata.degree = 0;
       }
+      else {
+        vdata.degree = incoming;
+      }
     }
 
+
+   if (last_node)
+      last_iter_kcores();
 };
 
 
 void kcores_main(){
 
   ps.gt.start();
+  calc_initial_degree();
  
-  for (int i=0; i< ac.iter; i++){
+  for (ps.iiter=0; ps.iiter< ac.iter; ps.iiter++){
    ps.glcore_kcores->start();
    ps.glcore_kcores->add_task_to_all(kcores_update_function, 1);
  }
