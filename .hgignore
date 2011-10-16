@@ -1,0 +1,15 @@
+# use glob syntax
+syntax: glob
+
+*~
+debug/*
+release/*
+profile/*
+dist/graphlabapi*
+doc/doxygen/*
+deps/*
+configure.deps
+config.log
+
+extapis/java_jni/dist
+extapis/java_jni/build
