@@ -1,0 +1,293 @@
+#!/bin/bash
+
+## Ensure exit on error:
+# set -e
+
+
+
+
+## Begin logging in config.log
+LOG_FILE=config.log
+date | tee $LOG_FILE
+
+## Define some defaults which are modified by the script and whatever
+## is defined in configure.deps
+RELEASE_DIR=release
+DEBUG_DIR=debug
+PROFILE_DIR=profile
+INSTALL_DIR=/usr/local
+EXPERIMENTAL=false
+GRAPHLAB_HOME=$PWD
+
+
+## Overwrite defaults if they are available
+if [ -f configure.deps ]; then
+  source configure.deps
+fi
+
+
+
+
+function print_help {
+  echo "Usage: ./configure [--bootstrap] [--force_cmake_install]"
+  echo "                   [--force_boost_install] [--prefix=PREFIX]"
+  echo "                   [--experimental]"
+  echo
+  echo "      --cleanup               remove all build directories"
+  echo 
+  echo "      --bootstrap             bootstrap will install CMake/Boost if they are not detected."
+  echo
+  echo "      --yes                   automatically install dependencies locally if they are not met."
+  echo
+  echo "      --force_cmake_install   This forces a CMake installation even if CMake is detected."
+  echo
+  echo "      --force_boost_install   This forces a Boost installation even if Boost is detected."
+  echo
+  echo "      --force_kc_install      This forces a Kyoto Cabinet installation even if Kyoto Cabinet is detected."
+  echo
+  echo "      --prefix=[PREFIX]       GraphLab Installation target directory. Defaults to /usr/local"
+  echo 
+  echo "      --experimental          Turns on undocumented experimental distributed capabilities. "
+  echo 
+  echo "      --itpp                  Try to automatically build itpp"
+  echo
+  echo "      --itpp_include_dir=[DIR] specify manually itpp include directories (path to itpp header files)."
+  echo 
+  echo "      --itpp_link_dir=[DIR]   specify manually itpp link dir (path to libitpp.a lib)."
+  echo
+  echo "      --eigen                 Install Eigen linear algebra package "
+  echo
+  echo "      -D something=something  specify definitions to be passed on to cmake."
+  echo
+  exit 1
+}
+
+function run_cleanup {
+  #!/bin/bash
+  echo "This script completely erases all build folders including dependencies!!!"
+  echo "Are you sure you want to continue? (yes or no)"
+  read yesorno;
+  if [ "$yesorno" == "yes" ]; then 
+    echo "Removing release debug and profile folders";
+    rm -rf release debug profile deps configure.deps
+  else
+    echo "Doing nothing!";
+  fi 
+  exit 1
+}
+
+
+function unknown_option {
+  echo "Unrecognized option: $1"
+  echo "To get help, run ./configure --help"
+  exit 1
+}
+
+config_flags=""
+
+while [ $# -gt 0 ]
+  do case $1 in
+    --help)                 print_help ;;
+    --cleanup)              run_cleanup ;;
+    --bootstrap)            bootstrap=1 ;;
+    --yes)                  always_yes=1;;
+    --force_cmake_install)  force_cmake_install=1 ;;
+    --force_boost_install)  force_boost_install=1 ;;
+    --force_kc_install)     force_kc_install=1 ;;
+    --prefix=*)             prefix=${1##--prefix=} ;;
+    --experimental)         experimental=1 ;;
+    --itpp)                 itpp=1 ;;
+    --itpp_include_dir=*)   itpp_include_dir=${1##--itpp_include_dir=} ;;
+    --itpp_link_dir=*)      itpp_link_dir=${1##--itpp_link_dir=} ;;
+    --eigen)		    install_eigen=1 ;;
+ #   --yrlabs)               yrlabs=1 ;; # Yahoo Research Experimental Components
+    -D)                      config_flags="$config_flags -D $2"; shift ;;
+    *) unknown_option $1 ;;
+  esac
+  shift
+done
+
+##==========================================================
+##  Construct configure.deps file specifying the necessary environment
+##  variables
+
+# Create a configure deps if no such file already exists
+if [ ! -f configure.deps ]; then
+  # Initialize with default settings
+  echo "RELEASE_DIR=$RELEASE_DIR"     >> configure.deps
+  echo "DEBUG_DIR=$DEBUG_DIR"         >> configure.deps
+  echo "PROFILE_DIR=$PROFILE_DIR"     >> configure.deps
+fi
+
+# Enable or disable experimental graphlab components
+if [ ! -z $experimental ]; then
+  echo "EXPERIMENTAL=true"       >> configure.deps
+else
+  echo "EXPERIMENTAL=$EXPERIMENTAL"      >> configure.deps
+fi
+
+# # Enable or disable Yahoo Research Labs Experimental components
+# if [ ! -z $yrlabs ]; then
+#   echo "YRL_EXPERIMENTAL=true"       >> configure.deps
+# else
+#   echo "YRL_EXPERIMENTAL=$YRL_EXPERIMENTAL"      >> configure.deps
+# fi
+
+
+# Run the configure deps
+source configure.deps 
+
+
+# Run the bootstrap script which populates configure.deps
+if [ ! -z $bootstrap ]; then
+  source ./scripts/bootstrap.sh | tee -a $LOG_FILE
+fi
+
+if [ ! -z $install_eigen ]; then
+  source ./scripts/eigen_install.sh `pwd` | tee -a $LOG_FILE
+  echo "Eigen setup OK"
+  HAS_EIGEN=1;
+# Try to build itpp
+elif [ ! -z $itpp ]; then
+  source ./scripts/itpp_install.sh | tee -a $LOG_FILE
+fi
+
+
+#if the prefix is not specified
+if [ ! -z $prefix ]; then
+  echo "INSTALL_DIR=$prefix"     >> configure.deps
+else
+  echo "INSTALL_DIR=$INSTALL_DIR"  >> configure.deps
+fi
+
+
+
+
+# Run the configure deps
+source configure.deps 
+
+
+#if cmake was not defined then define it
+if [ -z $CMAKE ]; then
+    CMAKE=cmake
+fi
+
+
+echo -e \
+    "======================= BUILD CONFIGURATION ========================\n"\
+    "System Information: " | tee -a $LOG_FILE
+uname -v | tee -a $LOG_FILE
+echo "GCC Information: " | tee -a $LOG_FILE
+gcc --version | tee -a $LOG_FILE
+g++ --version | tee -a $LOG_FILE
+
+echo -e \
+    "Release build path:        $RELEASE_DIR \n"\
+    "Debug build path:          $DEBUG_DIR \n"\
+    "Profile build path:        $PROFILE_DIR \n"\
+    "Install path:              $INSTALL_DIR \n"\
+    "BOOST_ROOT:                $BOOST_ROOT \n"\
+    "KC_ROOT:                   $KC_ROOT \n"\
+    "Build experimental parts:  $EXPERIMENTAL \n" | tee -a $LOG_FILE
+
+
+
+
+
+# Construct config flags for cmake
+if [ ! -z $INSTALL_DIR ]; then
+    config_flags="$config_flags -D CMAKE_INSTALL_PREFIX:STRING=$INSTALL_DIR"
+fi
+
+if [ ! -z $BOOST_ROOT ]; then
+    config_flags="$config_flags -D BOOST_ROOT:STRING=$BOOST_ROOT"
+fi
+
+
+
+if [ ! -z $KC_ROOT ]; then
+    config_flags="$config_flags -D KC_ROOT:STRING=$KC_ROOT"
+fi
+
+if [ ! -z $EXPERIMENTAL ]; then
+    config_flags="$config_flags -D EXPERIMENTAL:BOOL=$EXPERIMENTAL"
+fi
+
+# if [ ! -z $YRL_EXPERIMENTAL ]; then
+#     config_flags="$config_flags -D YRL_EXPERIMENTAL:BOOL=$YRL_EXPERIMENTAL"
+#    if [ ! -z $AVRO_ROOT ]; then
+#        config_flags="$config_flags -D AVRO_ROOT:STRING=$AVRO_ROOT"
+#    fi
+# fi
+
+
+if [ ! -z $itpp_link_dir ]; then
+    config_flags="$config_flags -D ITPP_LINK_DIR:STRING=$itpp_link_dir"
+fi
+
+if [ ! -z $itpp_include_dir ]; then
+   config_flags="$config_flags -D ITPP_INCLUDE_DIR:STRING=$itpp_include_dir"
+fi
+
+if [ ! -z $HAS_EIGEN ]; then
+   config_flags="$config_flags -D HAS_EIGEN:STRING=true"
+fi
+### CONSTRUCT THE BUILD DIRECTORIES ===========================================
+
+set -e
+
+echo -e "\n\n\n======================= Release ========================" \
+    | tee -a $LOG_FILE 
+
+
+
+if [ ! -d $RELEASE_DIR ]; then
+    mkdir $RELEASE_DIR
+fi
+cd $RELEASE_DIR
+rm -f CMakeCache.txt
+build_cmd="$CMAKE \
+    -D CMAKE_BUILD_TYPE=Release \
+    $config_flags \
+    ../."
+echo $build_cmd | tee -a "../$LOG_FILE"
+eval $build_cmd | tee -a "../$LOG_FILE"
+cd $GRAPHLAB_HOME
+
+
+echo -e "\n\n\n======================= Debug =========================" \
+    | tee -a $LOG_FILE 
+
+if [ ! -d $DEBUG_DIR ]; then
+    mkdir $DEBUG_DIR
+fi
+cd $DEBUG_DIR
+rm -f CMakeCache.txt
+build_cmd="$CMAKE \
+    -D CMAKE_BUILD_TYPE=Debug \
+    $config_flags \
+    ../."
+echo $build_cmd | tee -a ../$LOG_FILE
+eval $build_cmd | tee -a ../$LOG_FILE
+cd $GRAPHLAB_HOME
+
+
+echo -e "\n\n\n======================= Profile ========================" \
+    | tee -a $LOG_FILE 
+
+if [ ! -d $PROFILE_DIR ]; then
+    mkdir $PROFILE_DIR
+fi
+cd $PROFILE_DIR
+rm -f CMakeCache.txt
+build_cmd="$CMAKE \
+    -D CMAKE_BUILD_TYPE=Release \
+    -D COMPILE_PROFILING=1 \
+    $config_flags \
+    ../."
+
+echo $build_cmd | tee -a ../$LOG_FILE
+eval $build_cmd | tee -a ../$LOG_FILE
+cd $GRAPHLAB_HOME
+
+
