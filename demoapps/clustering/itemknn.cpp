@@ -33,8 +33,8 @@ extern problem_setup ps;
 extern const char * runmodesname[];
 double sum_sqr(sparse_vec & v);
 
-vec wrap_answer(const vec& distances, const ivec& indices, int num){
-   vec ret = zeros(num*2);
+flt_dbl_vec wrap_answer(const flt_dbl_vec& distances, const ivec& indices, int num){
+   flt_dbl_vec ret = zeros(num*2);
    for (int i=0; i< num; i++){
       ret[2*i] = distances[i];
       ret[2*i+1] = indices[i];
@@ -44,15 +44,52 @@ vec wrap_answer(const vec& distances, const ivec& indices, int num){
 
 void init_knn(){
 
-   if (ac.distance_measure != EUCLIDEAN)
+   if (ac.distance_measure != EUCLIDEAN && ac.distance_measure != COSINE && ac.distance_measure != TANIMOTO)
      return;
 
+   int start = (ps.algorithm == USER_KNN ? 0 : ps.M);
+   int end = (ps.algorithm == USER_KNN ? ps.M : ps.M+ps.N);
+  
    graph_type * training = ps.g<graph_type>(TRAINING);
-   for (int i=0; i< ps.M; i++){
+   for (int i=start; i< end; i++){
       vertex_data & data = training->vertex_data(i);
       data.min_distance = sum_sqr(data.datapoint);
    }
 
+   int startv = (ps.algorithm == USER_KNN ? 0 : ps.M_validation);
+   int endv = (ps.algorithm == USER_KNN ? ps.M_validation : ps.M_validation+ps.N_validation);
+
+   graph_type * validation = ps.g<graph_type>(VALIDATION);
+   for (int i=startv; i< endv; i++){
+      vertex_data & data = validation->vertex_data(i);
+      data.min_distance = sum_sqr(data.datapoint);
+   }
+}
+
+
+void stats(){
+
+   flt_dbl min=1e100, max=0, avg=0;
+   int cnt = 0;
+   graph_type * validation = ps.g<graph_type>(VALIDATION);
+   int startv = (ps.algorithm == USER_KNN ? 0 : ps.M_validation);
+   int endv = (ps.algorithm == USER_KNN ? ps.M_validation : ps.M_validation+ps.N_validation);
+
+   for (int i=startv; i< endv; i++){
+     vertex_data& data = validation->vertex_data(i);
+     if (data.distances.size() > 0){
+       min = std::min(min, data.distances[0]);
+       max = std::max(max, data.distances[0]);
+       if (isnan(data.distances[0]))
+          printf("bug: nan on %d\n", i);
+       else {
+         avg += data.distances[0];    
+         cnt++;
+       }
+     }
+   }
+
+  printf("Distance statistics: min %g max %g avg %g\n", min, max, avg/cnt);
 }
 
  /***
@@ -78,11 +115,21 @@ void knn_update_function(gl_types::iscope &scope,
      return;
 
   graphlab::timer t; t.start();
+  graph_type *training = ps.g<graph_type>(TRAINING);
 
-  vec distances = zeros(ps.M);
-  for (int i=0; i<ps.M; i++){
-      vertex_data & other = ps.g<graph_type>(TRAINING)->vertex_data(i);
-      distances[i] = calc_distance(vdata.datapoint, other.datapoint, other.min_distance);
+   int start = (ps.algorithm == USER_KNN ? 0 : ps.M);
+   int end = (ps.algorithm == USER_KNN ? ps.M : ps.M+ps.N);
+  int howmany = (end-start)*ac.knn_sample_percent;
+  flt_dbl_vec distances = zeros(howmany);
+   if (ac.knn_sample_percent == 1.0){
+     for (int i=start; i< end; i++){
+        vertex_data & other = training->vertex_data(i);
+        distances[i-start] = calc_distance(vdata.datapoint, other.datapoint, other.min_distance, vdata.min_distance);
+     }
+  }
+  else for (int i=0; i<howmany; i++){
+        vertex_data & other = training->vertex_data(::randi(start, end-1));
+        distances[i] = calc_distance(vdata.datapoint, other.datapoint, other.min_distance, vdata.min_distance);
   }
 
   ivec indices = sort_index(distances);
@@ -90,16 +137,20 @@ void knn_update_function(gl_types::iscope &scope,
   vdata.distances = wrap_answer(distances, indices, ps.K);
   if (toprint)
     printf("Closest is: %d with distance %g\n", (int)vdata.distances[1], vdata.distances[0]);
+
+
+  if (id % 100 == 0)
+    printf("handling validation row %d\n", id);
 }
 
-void copy_assignments(mat &a, const vec& distances, int i){
-   for (int j=0; j<ps.K; j++){
+void copy_assignments(flt_dbl_mat &a, const flt_dbl_vec& distances, int i){
+   for (int j=0; j<distances.size()/2; j++){
      set_val(a,j, i, distances[j*2+1]);
    }
 }
 
-void copy_distances(mat &a, const vec& distances, int i){
-   for (int j=0; j<ps.K; j++){
+void copy_distances(flt_dbl_mat &a, const flt_dbl_vec& distances, int i){
+   for (int j=0; j<distances.size()/2; j++){
      set_val(a,j, i, distances[j*2]);
    }
 }
@@ -124,7 +175,7 @@ void knn_main(){
     init_knn();
     ps.gt.start();
     ps.glcore->start();
-
+    stats();
     prepare_output();
 };
 

@@ -81,7 +81,10 @@ float sgd_step_dec; //step decrement size
 
 /* variables for SVD */
 int svd_iter;
-  
+bool svd_finalize;
+bool svd_compile_eigenvectors;  
+int svd_compile_eigenvectors_block_size;
+
 /* variables for CG */
 bool cg_resid;
 
@@ -117,7 +120,12 @@ int distance_measure;
 /* random shuffle order of execution? */
 bool shuffle;
 
+/* for KNN */
+double knn_sample_percent;
+
 bool show_version;
+
+bool reduce_mem_consumption;
 
 advanced_config(){
     D = 20;
@@ -216,6 +224,13 @@ advanced_config(){
    shuffle = false;
 
    show_version = false;
+
+   knn_sample_percent = 1.0;
+   reduce_mem_consumption = false;
+
+   svd_finalize=true;
+   svd_compile_eigenvectors=false;
+   svd_compile_eigenvectors_block_size=500000;
  }
 
 

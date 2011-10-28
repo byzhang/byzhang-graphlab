@@ -9,8 +9,6 @@
 extern advanced_config ac;
 extern problem_setup ps;
 
-void assign(vec & v1, sparse_vec & v2);
-double sum_sqr(sparse_vec & v1);
 void add_tasks(gl_types::core &glcore);
 void run_graphlab(gl_types::core & glcore);
 
@@ -19,7 +17,7 @@ using namespace std;
 void initialize_clusters(gl_types::core &glcore){
    int first = -1;
    while(true){
-     first = randi(0, ps.M-1);
+     first = ::randi(0, ps.M-1);
      if (!ps.g<graph_type>()->vertex_data(first).reported){
         logstream(LOG_WARNING) << " node " << first << " has no edges - can not be selcted to cluster head " << endl;
      }
@@ -28,16 +26,16 @@ void initialize_clusters(gl_types::core &glcore){
    if (ac.debug)
      cout<<"****Seed node for kmeans++ is: " << first << endl;
    cluster first_clust;
-   assign(first_clust.location, ps.g<graph_type>()->vertex_data(first).datapoint);
+   assign(first_clust.location, ps.g<graph_type>()->vertex_data(first).datapoint, ps.N);
    first_clust.sum_sqr =sum_sqr(ps.g<graph_type>()->vertex_data(first).datapoint); 
    ps.g<graph_type>()->vertex_data(first).clusterhead = true;
    ps.g<graph_type>()->vertex_data(first).current_cluster = ps.K-1; //start from last to first
    first_clust.num_assigned_points = 1;
-   assign(first_clust.cur_sum_of_points, ps.g<graph_type>()->vertex_data(first).datapoint);
+   assign(first_clust.cur_sum_of_points, ps.g<graph_type>()->vertex_data(first).datapoint, ps.N);
    std::vector<cluster>::iterator it = ps.clusts.cluster_vec.begin();
    ps.clusts.cluster_vec.insert(it,first_clust);
 
-   vec distances = zeros(ps.M+1);
+   flt_dbl_vec distances = zeros(ps.M+1);
    for (int i=0; i<ps.K-1; i++){
      glcore.start();
      add_tasks(glcore);
@@ -73,10 +71,10 @@ void initialize_clusters(gl_types::core &glcore){
       }
       assert(thenode != -1);
       cluster cur_clust;
-      assign(cur_clust.location,ps.g<graph_type>()->vertex_data(thenode).datapoint);
+      assign(cur_clust.location,ps.g<graph_type>()->vertex_data(thenode).datapoint, ps.N);
       cur_clust.sum_sqr = sum_sqr(ps.g<graph_type>()->vertex_data(thenode).datapoint);
       cur_clust.num_assigned_points = 1;
-      assign(cur_clust.cur_sum_of_points, ps.g<graph_type>()->vertex_data(thenode).datapoint);
+      assign(cur_clust.cur_sum_of_points, ps.g<graph_type>()->vertex_data(thenode).datapoint, ps.N);
       ps.g<graph_type>()->vertex_data(thenode).clusterhead = true;
       ps.g<graph_type>()->vertex_data(thenode).current_cluster = ps.K-2-i;
       it = ps.clusts.cluster_vec.begin();

@@ -40,11 +40,19 @@ int read_edges(FILE * f, int nodes, graph_type * _g);
 template<typename edgedata>
 int read_edges(FILE * f, int nodes, graph_type_kcores * _g);
 
-
+FILE * open_file(const char * name, const char * mode){
+  FILE * f = fopen(name, mode);
+  if (f == NULL){
+      perror("fopen failed");
+      logstream(LOG_ERROR) <<" Failed to open file" << name << std::endl;
+      exit(1);
+   }
+  return f;
+}
 
 void fill_output(graph_type * g){
   
-   if (ac.algorithm == LDA || ac.algorithm == USER_KNN || ac.algorithm == ITEM_KNN)
+   if (ac.algorithm == LDA || ac.algorithm == USER_KNN || ac.algorithm == ITEM_KNN || ac.algorithm == SVD_EXPERIMENTAL)
 	return;
   
    ps.output_clusters = zeros(ps.K, ps.N);
@@ -61,8 +69,8 @@ void fill_output(graph_type * g){
           set_val( ps.output_assignements, i,0, data.current_cluster);
         } 
 	else if (ac.algorithm == K_MEANS_FUZZY){
-           double factor = sum(pow(data.distances,-2));
-           vec normalized = pow(data.distances,-2) / factor;
+           flt_dbl factor = sum(pow(data.distances,-2));
+           flt_dbl_vec normalized = pow(data.distances,-2) / factor;
            set_row(ps.output_assignements, i, normalized);
         }
      }
@@ -82,8 +90,130 @@ void fill_output(graph_type_kcores * g){
 //write an output vector to file
 void write_vec(FILE * f, int len, const double * array){
   assert(f != NULL && array != NULL);
-  fwrite(array, len, sizeof(double), f);
+  int total = 0;
+  
+  while(true){
+    int rc = fwrite(array+total, sizeof(double), len-total, f);
+    if (rc <= 0){
+      if (errno == EINTR){
+         logstream(LOG_WARNING) << "Interrupted system call, trying agin " << std::endl;
+         continue;
+      }
+      perror("write failed");
+      exit(1);
+    }
+    total += rc;
+    if (total >= len)
+      break;
+  }
 }
+
+//write an output vector to file
+void write_vec(FILE * f, int len, const float * array){
+  assert(f != NULL && array != NULL);
+  int total = 0;
+  while(true){
+    int rc = fwrite(array + total, sizeof(float), len-total, f); 
+    if (rc<= 0){
+       if (errno == EINTR){
+          logstream(LOG_WARNING) << "Interrupted system call, trying agin " << std::endl;
+          continue;
+       }
+       perror("write failed");
+       exit(1);
+    }
+    total += rc;
+    if (total >= len)
+      break;
+  }
+}
+//write an output vector to file
+void read_vec(FILE * f, int len, double * array){
+  assert(f != NULL && array != NULL);
+  int total = 0;
+  while(true){
+    int rc = fread(array+total, sizeof(double), len-total, f);
+    if (rc <= 0){
+       perror("read failed");
+       exit(1);
+    }
+    total += rc;
+    if (total >= len)
+       break;
+
+  }
+}
+//write an output vector to file
+void read_vec(FILE * f, int len, float * array){
+  assert(f != NULL && array != NULL);
+  int total = 0;
+  while(true){
+    int rc = fread(array+total, sizeof(float), len-total, f);
+    if (rc <= 0){
+       perror("read failed");
+       exit(1);
+    }
+    total += rc;
+    if (total >= len)
+       break;
+
+  }
+}
+//write an output vector to file
+void read_vec(FILE * f, int start, int len, double * array){
+  assert(f != NULL && array != NULL);
+  int total = 0;
+  fseek(f, start*sizeof(double), SEEK_SET);
+  while(true){
+    int rc = fread(array+total, sizeof(double), len-total, f);
+    if (rc <= 0){
+       perror("read failed");
+       exit(1);
+    }
+    total += rc;
+    if (total >= len)
+       break;
+
+  }
+}
+
+
+
+//write an output vector to file
+void read_vec(FILE * f, int start, int len, float * array){
+  assert(f != NULL && array != NULL);
+  int total = 0;
+  fseek(f, start*sizeof(float), SEEK_SET);
+  while(true){
+    int rc = fread(array+total, sizeof(float), len-total, f);
+    if (rc <= 0){
+       perror("read failed");
+       exit(1);
+    }
+    total += rc;
+    if (total >= len)
+       break;
+
+  }
+}
+
+
+
+void save_matrix(const char * filename, const char * varname, const mat& pmat){
+  remove(filename);
+  it_file output(filename);
+  output << Name(varname);
+  output << pmat;
+  output.close(); 
+}
+void save_matrix(const char * filename, const char * varname, const fmat& pmat){
+  FILE * pfile = open_file(filename, "wb");
+  if (ac.debug)
+     logstream(LOG_INFO) << "Starting to save matrix " << filename << " at time: " << ps.gt.current_time() << std::endl;
+  write_vec(pfile, pmat.size(), data(pmat));
+  if (ac.debug)
+     logstream(LOG_INFO) << "Finished saving matrix " << filename << " at time: " << ps.gt.current_time() << std::endl;
+ }
 
 
 
@@ -104,9 +234,8 @@ void export_to_binary_file(){
 
   char dfile[256] = {0};
   sprintf(dfile,"%s%d.out",ac.datafile.c_str(),ps.K);
-  FILE * f = fopen(dfile, "w");
-  assert(f!= NULL);
-
+  logstream(LOG_INFO)<<"Writing binary output file: " << dfile << std::endl;
+  FILE * f = open_file(dfile, "w");
   int rc = fwrite(&ps.M, 1, 4, f);
   assert(rc == 4);
   rc = fwrite(&ps.N, 1, 4, f);
@@ -128,11 +257,18 @@ void export_to_itpp_file(){
 
   char dfile[256] = {0};
   sprintf(dfile,"%s%d.out",ac.datafile.c_str(), ac.D);
+  remove(dfile);
   it_file output(dfile);
-  output << Name("Clusters");
-  output << ps.output_clusters;
-  output << Name("Assignments");
-  output << ps.output_assignements;
+  if (ps.output_clusters.size() > 0){
+    output << Name("Clusters");
+    mat a = fmat2mat(ps.output_clusters);
+    output << a; //DB: Eigen fails when trying to output << fmat2mat(ps.output_clusters)
+  }  
+  if (ps.output_assignements.size() > 0){
+    output << Name("Assignments");
+    mat a= fmat2mat(ps.output_assignements);
+    output << a;
+  }
   output.close();
 }
 
@@ -166,7 +302,7 @@ void import_from_file(){
     data.current_cluster = assignments[i]; 
  }
  for (int i=0; i<ps.K; i++){
-    ps.clusts.cluster_vec[i].location = get_row(clusters,i);
+    ps.clusts.cluster_vec[i].location = vec2fvec(get_row(clusters,i));
  }
 }
 
@@ -174,16 +310,24 @@ void add_vertices(graph_type * _g, testtype type){
   assert(ps.K > 0);
   vertex_data vdata;
   int howmany = ps.M;
-  if (type == VALIDATION)
-    howmany = ps.M_validation;
-  else if (type == TEST)
-    howmany = ps.M_test;
+  if (ps.algorithm == SVD_EXPERIMENTAL)
+     howmany = ps.M+ps.N;
 
+  if (ps.algorithm == USER_KNN && type == VALIDATION)
+    howmany = ps.M_validation;
+  else if (ps.algorithm == USER_KNN && type == TEST)
+    howmany = ps.M_test;
+  else if (ps.algorithm == ITEM_KNN && type == VALIDATION)
+    howmany = ps.M_validation + ps.N_validation;
+  else if (ps.algorithm == ITEM_KNN && type == TEST)
+    howmany = ps.M_test + ps.N_test;
+  else if (ps.algorithm == ITEM_KNN && type == TRAINING)
+    howmany = ps.M+ps.N;
   // add M movie nodes (ps.tensor dim 1)
   for (int i=0; i< howmany; i++){
     switch (ps.init_type){
        case INIT_RANDOM:
-         vdata.current_cluster = randi(0, ps.K-1);
+         vdata.current_cluster = ::randi(0, ps.K-1);
          break;
        
        case INIT_ROUND_ROBIN:
@@ -196,7 +340,7 @@ void add_vertices(graph_type * _g, testtype type){
 	 break;
     }
 
-    set_size(vdata.datapoint, ps.N);
+    set_size(vdata.datapoint, i < ps.M ? ps.N : ps.M);
     if (ps.algorithm == K_MEANS_FUZZY)
 	vdata.distances = zeros(ps.K);
 
@@ -217,6 +361,16 @@ void add_vertices(graph_type_kcores * _g, testtype type){
   
 }
 
+void compact(graph_type_kcores *_g){
+}
+
+void compact(graph_type *_g){
+   for (int i=0; i< (int)_g->num_vertices(); i++){
+      compact(_g->vertex_data(i).datapoint);
+   }
+
+
+}
 
 /* function that reads the problem from file */
 /* Input format is:
@@ -248,7 +402,7 @@ void load_graph(const char* filename, graph_type * _g, testtype type) {
         }
         if (type == TEST)
             return;
-	logstream(LOG_ERROR) << " can not find input file. aborting " << std::endl;
+	logstream(LOG_ERROR) << " can not find input file " << filename << ". aborting " << std::endl;
 	exit(1);
   }
 
@@ -274,13 +428,20 @@ void load_graph(const char* filename, graph_type * _g, testtype type) {
     ps.M=_M; ps.N= _N;
   }
   else if (type == VALIDATION){
-    assert(_N == ps.N);
+    if (ps.algorithm == USER_KNN) assert(_N == ps.N);
     ps.M_validation = _M;
+    ps.N_validation = _N;
+
   }
   else {
     assert(_N == ps.N);
     ps.M_test = _M;
   }
+
+  if (ps.algorithm == SVD_EXPERIMENTAL && ac.reduce_mem_consumption && ac.svd_compile_eigenvectors)
+    return;
+
+
   init();
   add_vertices(_g, type);
  
@@ -295,6 +456,9 @@ void load_graph(const char* filename, graph_type * _g, testtype type) {
     else val = read_edges<edge_double_cf>(f,ps.N,_g);
   }
   assert(val == ps.L);
+
+  if (ac.reduce_mem_consumption)
+    compact(_g);
 
   fclose(f);
 }
@@ -378,7 +542,7 @@ int read_edges(FILE * f, int column_dim, graph_type * _g){
     total += rc;
 
     //go over each rating (edges)
-    #pragma omp parallel for
+    //#pragma omp parallel for
     for (int i=0; i<rc; i++){
       if (!ac.zero) //usually we do not allow zero entries, unless --zero=true flag is set.
 	 assert(ed[i].weight != 0); 
@@ -398,6 +562,12 @@ int read_edges(FILE * f, int column_dim, graph_type * _g){
    for (int i=0; i<rc; i++){ 
      vertex_data & vdata = _g->vertex_data(ed[i].from - matlab_offset);
       set_new( vdata.datapoint, ed[i].to - matlab_offset, ed[i].weight);  
+      if (ps.algorithm == SVD_EXPERIMENTAL || ps.algorithm == ITEM_KNN){
+          vertex_data & other = _g->vertex_data(ed[i].to - matlab_offset + ps.M);
+          set_new( other.datapoint, ed[i].to - matlab_offset, ed[i].weight);
+          other.reported = true;
+      }
+
       if (ac.algorithm == K_MEANS){ //compute mean for each cluster by summing assigned points
          ps.clusts.cluster_vec[vdata.current_cluster].cur_sum_of_points[ed[i].to - matlab_offset] += ed[i].weight;  
       }

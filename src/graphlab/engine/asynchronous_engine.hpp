@@ -44,6 +44,7 @@
 #include <graphlab/util/timer.hpp>
 #include <graphlab/util/random.hpp>
 #include <graphlab/util/mutable_queue.hpp>
+#include <graphlab/util/counting_queue.hpp>
 
 #include <graphlab/graph/graph.hpp>
 #include <graphlab/scope/iscope.hpp>
@@ -67,7 +68,6 @@ namespace graphlab {
     public scope_manager_and_scheduler_wrapper<Graph, Scheduler, ScopeFactory> {
 
   public: // Type declerations
-    enum execution_type {THREADED, SIMULATED};
 
     typedef scope_manager_and_scheduler_wrapper<Graph, Scheduler, ScopeFactory> base;
     using base::apply_scheduler_options;
@@ -120,6 +120,26 @@ namespace graphlab {
       }      
     }; // end of task worker
 
+
+    class engine_thread_for_sync {
+      asynchronous_engine* engine;
+      size_t workerid;
+      public:
+      engine_thread_for_sync() : engine(NULL), workerid(0) { }
+      void init(asynchronous_engine* _engine,
+          size_t _workerid) {
+        engine = _engine;
+        workerid = _workerid;
+      }// End of init
+
+      void run() {
+        assert(engine != NULL);
+        logger(LOG_INFO, "Worker (Sync) %d started.\n", workerid);        
+        engine-> sync_loop(workerid);
+        logger(LOG_INFO, "Worker (Sync) %d finished.\n", workerid);
+      }
+    };
+
     
 
   private: // data members
@@ -130,8 +150,6 @@ namespace graphlab {
     /** Number of cpus to use */
     size_t ncpus; 
 
-    /** Specify the execution type */
-    execution_type exec_type;
 
     /** Use processor affinities */
     bool use_cpu_affinity;
@@ -142,6 +160,7 @@ namespace graphlab {
     /** set to 1 if the processor is in the midst of asking scheduler for stuff
      *  and running an update */
     std::vector<padded_integer> proc_in_update;
+
     
     /** Track the number of updates */
     std::vector<size_t> update_counts;
@@ -175,9 +194,13 @@ namespace graphlab {
     /** The termination functions */
     std::vector<termination_function_type> term_functions;
 
-    /** Boolean that determins whether the engine is active */
+    /** Boolean that determins whether the engine_update is active */
     bool active; 
 
+    /** Boolean that determins whether the engine_sync is active */
+    bool sync_active;
+
+    
     /** The cause of the last termination condition */
     const char* exception_message;
     exec_status termination_reason;
@@ -185,19 +208,13 @@ namespace graphlab {
     scope_range::scope_range_enum default_scope_range;
 
     barrier sync_barrier;
+
     std::vector<any> sync_accumulators;
-    
-    /**
-     This mutex/condition pair is used to protect against
-     the situation where termination is set, but there are threads waiting inside
-     the barrier in sync(). We protect against this by manually constructing a barrier
-     using a mutex/condition pair
-    */
-    mutex terminate_all_syncs_mutex;
-    size_t terminate_all_syncs;
-    size_t threads_entering_sync;
-    conditional terminate_all_syncs_cond;
-    
+
+
+
+
+
     struct sync_task {
       sync_function_type sync_fun;
       merge_function_type merge_fun;
@@ -221,9 +238,15 @@ namespace graphlab {
     
     /// A map from the shared variable to the sync task
     std::map<glshared_base*, size_t> var2synctask;
+
     /// Sync Tasks ordered by the negative of the next update time. (it is a max-heap)
     mutable_queue<size_t, int> sync_task_queue;
     std::pair<size_t, int> sync_task_queue_head;
+
+
+    // Add instant task queue
+    counting_queue<size_t> task_exec_queue;
+
     /// the lock protecting the sync_task_queue
     mutex sync_task_queue_lock;
     /// The priority of the head of the queue
@@ -231,6 +254,14 @@ namespace graphlab {
 
     /// Metrics logging
     metrics engine_metrics, scheduler_metrics;
+    
+    thread_group syncthreads;
+    std::vector<engine_thread_for_sync> syncers;
+    
+    mutex sync_now_lock;
+    conditional sync_now_cond;
+    size_t sync_now_counts;
+    
   public:
 
     /**
@@ -240,14 +271,12 @@ namespace graphlab {
      * threads or use actual threads. 
      */
     asynchronous_engine(Graph& graph,
-                        size_t ncpus = 1,
-                        execution_type exec_type = THREADED) :
+                        size_t ncpus = 1) :
       scope_manager_and_scheduler_wrapper<Graph,
                                           Scheduler,
                                           ScopeFactory>(graph,ncpus),
       graph(graph),
       ncpus( std::max(ncpus, size_t(1)) ),
-      exec_type(exec_type),
       use_cpu_affinity(false),
       use_sched_yield(true),
       proc_in_update(std::max(ncpus, size_t(1))),
@@ -258,15 +287,43 @@ namespace graphlab {
       last_check_millis(0),
       task_budget(0),
       active(false),
+      sync_active(true),
       exception_message(NULL),
       termination_reason(EXEC_UNSET),
       default_scope_range(scope_range::EDGE_CONSISTENCY),
-      sync_barrier(exec_type == THREADED ? ncpus : 1),
-      sync_accumulators(exec_type == THREADED ? ncpus : 1),
-      threads_entering_sync(0),
-      engine_metrics("engine"){ }
+      sync_barrier(ncpus),
+      sync_accumulators(ncpus),
+      task_exec_queue(ncpus),
+      engine_metrics("engine"),
+      sync_now_counts(0){
+      
+      syncers.resize(ncpus);
+      for (size_t i = 0; i < ncpus; ++i) {
+        // Initialize the syncers. 
+        syncers[i].init(this, i);
+        if(use_cpu_affinity)  {
+          syncthreads.launch(boost::bind(&engine_thread_for_sync::run, &(syncers[i])), i);
+        } else {
+          syncthreads.launch(boost::bind(&engine_thread_for_sync::run, &(syncers[i])));
+        }
+      }
 
-    //    ~asynchronous_engine() { }
+    }
+
+    ~asynchronous_engine() { 
+      sync_task_queue_lock.lock();
+      sync_active = false;
+      task_exec_queue.stop_blocking();
+      sync_task_queue_lock.unlock();
+      while (syncthreads.running_threads() > 0) {
+        try {
+          syncthreads.join();
+        }
+        catch(const char* c) {
+          logstream(LOG_ERROR) << "Exception Caught: " << c << std::endl;
+        }
+      }
+    }
 
     //! Get the number of cpus
     size_t get_ncpus() const { return ncpus; }
@@ -319,10 +376,10 @@ namespace graphlab {
       // Clear the update counts
       
       for (size_t i = 0;i < proc_in_update.size(); ++i) proc_in_update[i].val = 0;
+
       std::fill(update_counts.begin(), update_counts.end(), 0);
       apx_update_counts.value = 0;
       numsyncs.value = 0;
-      terminate_all_syncs = 0;
       // Reset timers
       start_time_millis = lowres_time_millis();
       last_check_millis = 0;
@@ -338,19 +395,16 @@ namespace graphlab {
       // evaluate all syncs
       scheduler->start();
       
-      /*
-       * Depending on the execution type call the correct internal
-       * start
-       */
-      if(exec_type == THREADED) run_threaded(scheduler, scope_manager);
-      else run_simulated(scheduler, scope_manager);
+      run_threaded(scheduler, scope_manager);
 
+      // complete sync of all variables
+      for (size_t i = 0;i < sync_tasks.size(); ++i) {
+        sync_now(*sync_tasks[i].sharedvariable);
+      }
       scheduler_metrics = scheduler->get_metrics();
       release_scheduler_and_scope_manager();
       
 
-      
-      
 
       // Metrics: update counts
       for(size_t i = 0; i < update_counts.size(); ++i) {
@@ -541,10 +595,19 @@ namespace graphlab {
       // makes sure the sync registration exists
       std::map<glshared_base*, size_t>::iterator iter = var2synctask.find(&shared);
       ASSERT_TRUE(iter != var2synctask.end());
-      ScopeFactory* local_scope_manager = get_scope_manager();
+      sync_now_lock.lock();
+      size_t cur_sync_now_value = sync_now_counts;
+      sync_now_lock.unlock();
       
-      evaluate_sync(iter->second, local_scope_manager, 0);
-      release_scheduler_and_scope_manager();
+      task_exec_queue.enqueue(iter->second);
+      task_exec_queue.broadcast();
+      // wait for completion
+      sync_now_lock.lock();
+      while (sync_now_counts == cur_sync_now_value) {
+        sync_now_cond.wait(sync_now_lock);
+      }
+      sync_now_lock.unlock();
+      
     }
     
 
@@ -555,15 +618,7 @@ namespace graphlab {
      * \todo Provide access to this from the update functions
      */
     void sync_soon(glshared_base& shared) {
-      ASSERT_TRUE(active);
-      
-      std::map<glshared_base*, size_t>::iterator iter = var2synctask.find(&shared);
-      ASSERT_TRUE(iter != var2synctask.end());
-      
-      sync_task_queue_lock.lock();
-      sync_task_queue.insert_max(iter->second, 0);
-      sync_task_queue_next_update = 0;
-      sync_task_queue_lock.unlock();
+      ASSERT_MSG(false, "Deprecated");
     }
     
     /**
@@ -573,15 +628,9 @@ namespace graphlab {
      * \todo Provide access to this from the update functions
      */
     void sync_all_soon() {
-      ASSERT_TRUE(active);
-      sync_task_queue_lock.lock();
-
-      for (size_t i = 0;i < sync_tasks.size(); ++i) {
-        sync_task_queue.insert_max(i, 0);
-      }
-      if (sync_tasks.size() > 0) sync_task_queue_next_update = 0;
-      sync_task_queue_lock.unlock();
+      ASSERT_MSG(false, "Deprecated");
     }
+    
   protected: // internal functions
 
     /**
@@ -590,10 +639,15 @@ namespace graphlab {
     void run_threaded(Scheduler* scheduler, ScopeFactory* scope_manager) {
       /* Initialize a pool of threads */
       std::vector<engine_thread> workers(ncpus);
+
+      
       thread_group threads;
+
+      
       for(size_t i = 0; i < ncpus; ++i) {
         // Initialize the worker
         workers[i].init(this, scheduler, scope_manager, i);
+
         // Start the worker thread using the thread group with cpu
         // affinity attached (CPU affinity currently only supported in
         // linux) since Mac affinity is set through the NX frameworks
@@ -603,6 +657,7 @@ namespace graphlab {
           threads.launch(boost::bind(&engine_thread::run, &(workers[i])));
         }
       }
+
       while (threads.running_threads() > 0) {
         try {
           threads.join();
@@ -618,24 +673,6 @@ namespace graphlab {
     } // end of run threaded
 
 
-    /**
-     * Simulate the use of actual threads.
-     */
-    void run_simulated(Scheduler* scheduler, ScopeFactory* scope_manager) {
-      use_sched_yield = false;
-      // repeatedly invoke run once as a random thread
-      while(active) {
-        // Pick a random cpu to run as
-        uint32_t cpuid = 0;
-        if(ncpus > 1) {
-          cpuid = random::fast_uniform<uint32_t>(0, (uint32_t)(ncpus - 1));
-        }
-        // Execute the update as that cpu
-        active = run_once(cpuid, scheduler, scope_manager);
-      }
-    } // end of run simulated
-
-    
     
     /**
      * Check all the terminators to identify if any termination
@@ -685,6 +722,7 @@ namespace graphlab {
 
 
 
+    // Do not use.
     bool run_once(size_t cpuid, 
                   Scheduler* scheduler, 
                   ScopeFactory* scope_manager) {
@@ -697,14 +735,16 @@ namespace graphlab {
          * Run any pending syncs and then test all termination
          * conditions.
          */
-        if (last_check_millis < lowres_time_millis() || terminate_all_syncs) {
+        if (last_check_millis < lowres_time_millis()) {
           last_check_millis = lowres_time_millis();
           // Check all termination conditions
           if(satisfies_termination_condition()) {
+            /* 
             terminate_all_syncs_mutex.lock();
             terminate_all_syncs = 1;
             terminate_all_syncs_cond.broadcast();
             terminate_all_syncs_mutex.unlock();
+            */
             active = false;
             return false;
           }
@@ -726,16 +766,11 @@ namespace graphlab {
           else {
             if (scheduler->get_terminator().end_critical_section(cpuid)) {
               termination_reason = EXEC_TASK_DEPLETION;
-              terminate_all_syncs_mutex.lock();
-              terminate_all_syncs = 1;
-              terminate_all_syncs_cond.broadcast();
-              terminate_all_syncs_mutex.unlock();
               active = false;
               return false;
             }
             else {
               if(use_sched_yield) sched_yield();
-              if (exec_type != SIMULATED) continue;
               else return true;
             }
           }
@@ -790,32 +825,25 @@ namespace graphlab {
       size_t updcount = 0;
       bool isempty = false;
       while(active) {
-        if (__builtin_expect(ctr == 0 || isempty || terminate_all_syncs, 0)) {
-          evaluate_sync_queue(scope_manager, 
-                              cpuid, 
-                              approximate_last_update_count());
-          /**
-          * Run any pending syncs and then test all termination
-          * conditions.
-          */
+        if (__builtin_expect(ctr == 0 || isempty, 0)) {
+          if (cpuid == 0) { 
+            evaluate_sync_queue(scope_manager,
+                cpuid,
+                approximate_last_update_count());
+          }
+
           size_t timemillis = lowres_time_millis();
           size_t curupdatecount = approximate_last_update_count();
-          if (last_check_millis < timemillis || isempty || terminate_all_syncs) {
+          if (last_check_millis < timemillis || isempty) {
             last_check_millis = timemillis;
-            // Check all termination conditions
-            if(satisfies_termination_condition()) {
-              terminate_all_syncs_mutex.lock();
-              terminate_all_syncs = 1;
-              terminate_all_syncs_cond.broadcast();
-              terminate_all_syncs_mutex.unlock();
+            if (satisfies_termination_condition()) {
               active = false;
               break;
             }
           }
           // estimate the next ctrlimit
-
-            // compute average update rate per millisecond. with a prior of 16K per 1000ms
-          // we want to trigger every 100ms
+          //
+          // compute average update rate per millisecond. with a prior of 16K per 1000ms
           ctr = 1 + ((curupdatecount + 16000) / (timemillis + 1000)) * 100;
 
           if (sync_task_queue_next_update > curupdatecount) {
@@ -823,6 +851,7 @@ namespace graphlab {
           }
         }
         --ctr;
+
         /**
          * Get and execute the next task from the scheduler.
          */
@@ -841,11 +870,6 @@ namespace graphlab {
           }
           else {
             if (scheduler->get_terminator().end_critical_section(cpuid)) {
-              termination_reason = EXEC_TASK_DEPLETION;
-              terminate_all_syncs_mutex.lock();
-              terminate_all_syncs = 1;
-              terminate_all_syncs_cond.broadcast();
-              terminate_all_syncs_mutex.unlock();
               active = false;
             }
             else {
@@ -860,6 +884,7 @@ namespace graphlab {
           const vertex_id_type vertex = task.vertex();
           assert(vertex < graph.num_vertices());
           assert(task.function() != NULL);
+
           // Lock the vertex to ensure that no other processor tries
           // to take it build a scope
           iscope_type* scope = scope_manager->get_scope(cpuid, vertex);
@@ -874,6 +899,8 @@ namespace graphlab {
           scope->commit();
           // Release the scope
           scope_manager->release_scope(scope);
+          //logger(LOG_DEBUG  , "Worker %d released lock on %d.\n", cpuid, vertex);        
+
           // Mark the task as completed in the scheduler
           scheduler->completed_task(cpuid, task);
           // record the successful execution of the task
@@ -897,12 +924,6 @@ namespace graphlab {
         }
         sched_yield();
       }
-      // do a final evaluate_sync_queue which will ensure
-      // that the last update is committed, and will also 
-      // ensure termination since there might be threads stuck in (1).
-      evaluate_sync_queue(scope_manager, 
-                          cpuid, 
-                          approximate_last_update_count());
     }
     
     void construct_sync_queue() {
@@ -924,60 +945,45 @@ namespace graphlab {
     }
 
 
-  
-    void evaluate_sync(size_t syncid, 
-                       ScopeFactory* scope_manager,
-                       size_t cpuid) {
-      numsyncs.inc();
-      sync_task &sync = sync_tasks[syncid];
-      // # get the range of vertices
-      const vertex_id_type vmin = sync.rangelow;
-      const vertex_id_type vmax = 
-        std::min(sync.rangehigh, vertex_id_type(graph.num_vertices() - 1) );
-      
-      //accumulate through all the vertices
-      any accumulator = sync.zero;
-      for(vertex_id_type i = vmin; i <= vmax; ++i) {
-        iscope_type* scope = scope_manager->get_scope(cpuid, i,
-                                            scope_range::NULL_CONSISTENCY);
-        sync.sync_fun(*scope, accumulator);
-        scope->commit();
-        scope_manager->release_scope(scope);
+    void sync_loop(size_t cpuid) {
+      size_t syncid = 0;
+      while(true) {
+        // Block until the update threads signal the sync condition.
+        std::pair<size_t, bool> syncid_succ = task_exec_queue.poll_till_pop();
+        if (syncid_succ.second == false) return;
+
+        ScopeFactory* scope_manager = get_scope_manager();
+        // Each syncer tries to acquire its share of the graph.
+        size_t numv = graph.num_vertices();
+        size_t v_per_cpu = 1+ (numv-1)/(ncpus);
+        size_t v_start = v_per_cpu * cpuid;
+        size_t v_end = std::min(numv-1, v_start + v_per_cpu-1);
+        scope_manager->acquire_range_lock(v_start, v_end);
+
+        
+        sync_barrier.wait();
+        
+
+        parallel_evaluate_sync(syncid, scope_manager, cpuid);
+
+
+        scope_manager->release_range_lock(v_start, v_end);
+        // engine is not active. This is a sync now
+        if (cpuid == 0 && active == false) {
+          sync_now_lock.lock();
+          sync_now_counts++;
+          sync_now_cond.signal();
+          sync_now_lock.unlock();
+        }
       }
-      sync.sharedvariable->apply(sync.apply_fun, accumulator);
     }
 
 
+    // Assumptions: The all syncer threads have got the lock of the entire graph.
     void parallel_evaluate_sync(size_t syncid, 
                                  ScopeFactory* scope_manager,
                                  size_t cpuid) {
-      // use the terminate sync as a barrier
-      terminate_all_syncs_mutex.lock();
-      // check if termination is set. If it is, we can quit immediately
-      if (terminate_all_syncs) {
-        terminate_all_syncs_mutex.unlock(); 
-        return;
-      }
-      // set the barrier condition. Wait for processes to enter the sync
-      threads_entering_sync++;
-      if (threads_entering_sync == (exec_type == THREADED ? ncpus : 1)) {
-        threads_entering_sync = 0;
-        terminate_all_syncs_cond.broadcast();
-      }
-      else {
-        while(threads_entering_sync > 0 && !terminate_all_syncs) {
-          terminate_all_syncs_cond.wait(terminate_all_syncs_mutex);
-        }
-      }
-      terminate_all_syncs_mutex.unlock();
-      // at this point either all threads have entered the sync, or 
-      // terminate all syncs is set by another process.
-      // If terminate_all_syncs is set that means that at least one thread
-      // is out of the sync. Note that there cannot be a race between the unlock
-      // above and this if below.
-      if (terminate_all_syncs) return;
-      
-      if (exec_type == THREADED && sync_tasks[syncid].merge_fun != NULL) {
+        if (sync_tasks[syncid].merge_fun != NULL) {
         // Threaded engine and we have a merge function 
         // we can do a parallel reduction
         if (cpuid == 0) {
@@ -985,7 +991,6 @@ namespace graphlab {
         }
         // wait for all threads to get here
         sync_task &sync = sync_tasks[syncid];
-
 
         // yes we do have a merge function
         // lets do a parallel reduction
@@ -1003,13 +1008,15 @@ namespace graphlab {
         any& accumulator = sync_accumulators[cpuid];
         accumulator = sync.zero;
         for (vertex_id_type i = v_mymin; i < v_mymax; ++i) {
-          iscope_type* scope = scope_manager->get_scope(cpuid, i, 
+          iscope_type* scope = scope_manager->get_scope(ncpus+cpuid, i, 
                                           scope_range::NULL_CONSISTENCY);
           sync.sync_fun(*scope, accumulator);
           scope->commit();
           scope_manager->release_scope(scope);
         }
+
         sync_barrier.wait();
+
         // merge. Currently done only on one CPU
         // we could conceivably do a tree merge.
         // TODO: Tree merge
@@ -1023,7 +1030,7 @@ namespace graphlab {
       } else {
         // simulated engine, or no merge function.
         // we have to do the sync sequentially
-        if (exec_type == SIMULATED || cpuid == 0) {
+        if (cpuid == 0) {
           numsyncs.inc();
           sync_task &sync = sync_tasks[syncid];
           // # get the range of vertices
@@ -1042,7 +1049,6 @@ namespace graphlab {
           sync.sharedvariable->apply(sync.apply_fun, accumulator);
         }
       }
-      sync_barrier.wait();
     }
 
     
@@ -1053,68 +1059,57 @@ namespace graphlab {
                    "before calling engine start!");
       }
     }
+    
     // evaluate the sync queue. Loop through at most max_sync times.
+    // Should only be called by cpu0.
     void evaluate_sync_queue(ScopeFactory* scope_manager,
                              size_t cpuid,
                              size_t curupdatecount) {
-      bool is_cpu0 = (exec_type == THREADED && cpuid == 0) || exec_type == SIMULATED;
+      bool is_cpu0 = (cpuid == 0);
+
+      if (!is_cpu0) return;
+
       // if the head of the queue is ready
       while (sync_task_queue_next_update <= curupdatecount) {
-        // wait for all threads to reach here.
-        sync_barrier.wait();
-        // I don't need to lock. All the threads are here.
-        // make sure if this is ever reached, we will never come back again
-        if (terminate_all_syncs) {
-          sync_task_queue_next_update = (size_t)(-1);
-          break;
-        }
 
+        // wait for all threads to reach here.
+        // Become probelmatic when having 2 groups of threads: update, sync
         bool hastask = !sync_task_queue.empty() && 
                       (size_t)(-(sync_task_queue.top().second)) <= curupdatecount;
                       
-        sync_barrier.wait();
+
         // no task to do. Return
         if (hastask == false) {
           // cpu 0 updates the head tracker
-          if (is_cpu0) {
             if (active && !sync_task_queue.empty()) {
               sync_task_queue_next_update = -(sync_task_queue.top().second);
             }
             else {
               sync_task_queue_next_update = size_t(-1);
             }
-          }
-          sync_barrier.wait();
           return;
         }
         
-        // we hae a task to do!
-        // CPU 0 extracts the job.
-        if (is_cpu0) {
-          sync_task_queue_head = sync_task_queue.pop();
-        }
-        sync_barrier.wait();
-        // go for it. Evaluate the extracted task
-        parallel_evaluate_sync(sync_task_queue_head.first, scope_manager, cpuid);
-        if (terminate_all_syncs) return;
+        sync_task_queue_head = sync_task_queue.pop();
 
-        if (is_cpu0) {
-          // put it back if the interval is postive
-          if (sync_tasks[sync_task_queue_head.first].sync_interval > 0) {
-            int next_time((int)(approximate_last_update_count() + 
-                          sync_tasks[sync_task_queue_head.first].sync_interval));
-            sync_task_queue.insert_max(sync_task_queue_head.first, -next_time);
-          }
-          
-          // update the head tracker
-          if (active && !sync_task_queue.empty()) {
-            sync_task_queue_next_update = -(sync_task_queue.top().second);
-          }
-          else {
-            sync_task_queue_next_update = size_t(-1);
-          }
+        // go for it. Evaluate the extracted task
+        // Put the syncid into the exec task queue, and signal waiting syncers.
+        task_exec_queue.enqueue(sync_task_queue_head.first);
+        task_exec_queue.broadcast();
+        // put it back if the interval is postive
+        if (sync_tasks[sync_task_queue_head.first].sync_interval > 0) {
+          int next_time((int)(approximate_last_update_count() + 
+                        sync_tasks[sync_task_queue_head.first].sync_interval));
+          sync_task_queue.insert_max(sync_task_queue_head.first, -next_time);
         }
-        sync_barrier.wait();
+        
+        // update the head tracker
+        if (active && !sync_task_queue.empty()) {
+          sync_task_queue_next_update = -(sync_task_queue.top().second);
+        }
+        else {
+          sync_task_queue_next_update = size_t(-1);
+        }
       }
     }
     

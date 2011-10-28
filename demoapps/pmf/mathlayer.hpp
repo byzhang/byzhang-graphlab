@@ -73,7 +73,11 @@ inline void debug_print_vec(const char * name,const vec& _vec, int len){
     else printf("%12.4g    ", _vec(i));
   printf("\n");
 }
-
+inline vec init_vec(const double * array, int size){
+  vec ret(size);
+  memcpy(ret.data(), array, size*sizeof(double));
+  return ret;
+}
 inline void dot2(const vec&  x1, const vec& x3, mat & Q, int j, int len){
 	for (int i=0; i< len; i++){
 		Q(i,j) = (x1(i) * x3(i));
@@ -156,6 +160,10 @@ inline vec init_vec(const char * string, int size){
   assert(i == size);
   return out;
 }
+inline vec init_dbl_vec(const char * string, int size){
+  return init_vec(string, size);
+}
+
 inline double norm(const mat &A, int pow=2){
      return A.squaredNorm();
 }
@@ -226,10 +234,17 @@ inline vec elem_mult(const vec&a, const vec&b){
       ret(i) *= b(i);
    return ret;
 }
+inline sparse_vec elem_mult(const sparse_vec&a, const sparse_vec&b){
+   return a.cwiseProduct(b);
+}
 inline double sum(const vec & a){
   return a.sum();
 }
-inline double sum_sqr(const vec & a){
+template<typename T>
+double sum_sqr(const T& a);
+
+template<>
+inline double sum_sqr<vec>(const vec & a){
   vec ret = a.array().pow(2);
   return ret.sum();
 }
@@ -314,7 +329,6 @@ public:
    }
   
   };
-
   std::fstream & operator<<(const std::string str){
    int size = str.size();
    fb.write((char*)&size, sizeof(int));
@@ -334,7 +348,7 @@ public:
       }
    return fb;
   }
-  std::fstream &operator<<(vec & v){
+   std::fstream &operator<<(const vec & v){
    int size = v.size();
    fb.write( (const char*)&size, sizeof(int));
    assert(!fb.fail());
@@ -345,7 +359,7 @@ public:
    }
    return fb;
   }
- std::fstream & operator>>(std::string  str){
+  std::fstream & operator>>(std::string  str){
     int size = -1;
     fb.read((char*)&size, sizeof(int));
        if (fb.fail() || fb.eof()){
@@ -376,7 +390,7 @@ public:
       }
    return fb;
   }
-  std::fstream &operator>>(vec & v){
+   std::fstream &operator>>(vec & v){
    int size;
    fb.read((char*)&size, sizeof(int));
    assert(!fb.fail());
@@ -390,6 +404,7 @@ public:
    }
    return fb;
   }
+
 
 
   void close(){
@@ -407,15 +422,26 @@ inline void set_new(sparse_vec&v, int ind, double val){
 inline int nnz(sparse_vec& v){
   return v.nonZeros();
 }
-#define FOR_ITERATOR(i, v) \
-    for (sparse_vec::InnerIterator i(v); i; ++i)
-
 inline int get_nz_index(sparse_vec &v, sparse_vec::InnerIterator& i){
   return i.index();
 }
 inline double get_nz_data(sparse_vec &v, sparse_vec::InnerIterator& i){
   return i.value();
 }
+#define FOR_ITERATOR(i,v) \
+  for (sparse_vec::InnerIterator i(v); i; ++i)
+
+template<>
+inline double sum_sqr<sparse_vec>(const sparse_vec & a){
+  double sum=0;
+  FOR_ITERATOR(i,a){
+    sum+= powf(i.value(),2);
+  }
+  return sum;
+}
+
+
+
 inline double get_nz_data(sparse_vec &v, int i){
   assert(nnz(v) > i);
   int cnt=0;
@@ -426,6 +452,16 @@ inline double get_nz_data(sparse_vec &v, int i){
     cnt++;
   }
   return 0.0;
+}
+inline void print(sparse_vec & vec){
+  int cnt = 0;
+  FOR_ITERATOR(i, vec){
+    std::cout<<get_nz_index(vec, i)<<":"<< get_nz_data(vec, i) << " ";
+    cnt++;
+    if (cnt >= 20)
+       break;
+  }
+  std::cout<<std::endl;
 }
 inline vec pow(const vec&v, int exponent){
   vec ret = vec(v.size());
@@ -510,6 +546,13 @@ inline double abs_sum(const vec &v){
       sum += fabs(v(i));
   return sum;
 }
+inline double sum(const sparse_vec &v){
+  double sum =0;
+  FOR_ITERATOR(i, v){
+      sum += i.value();
+  }
+  return sum;
+}
 inline vec sqrt(vec & v){
    vec ret(v.size());
    for (int i=0; i< v.size(); i++){
@@ -530,6 +573,13 @@ inline vec sqrt(vec & v){
 #include <itpp/stat/misc_stat.h>
 #include "itppvecutils.hpp"
 using namespace itpp;
+
+//#undef sparse_vec
+//typedef Sparse_Vec<float> sparse_vec;
+
+inline void compact(sparse_vec & a){
+  //TODO
+}
 
 inline void set_val(mat& A, int row, int col, double val){
   A.set(row, col, val);
@@ -556,6 +606,9 @@ inline mat init_mat(const char * string, int row, int col){
   return mat(string);
 }
 inline vec init_vec(const char * string, int size){
+  return vec(string);
+}
+inline vec init_dbl_vec(const char * string, int size){
   return vec(string);
 }
 inline vec head(const vec &v, int num){
@@ -596,6 +649,9 @@ inline const double * data(const vec &v){
 }
 inline void set_size(sparse_vec &v, int size){
   v.set_size(size);
+}
+inline void set_size(mat &a, int row, int col){
+  a.set_size(row, col);
 }
 inline void set_new(sparse_vec&v, int ind, double val){
   v.set_new(ind, val);
@@ -692,6 +748,112 @@ inline bool eig_sym(const mat & T, vec & eigenvalues, mat & eigenvectors){
   eigenvectors = reverse_cols;
   return true;
 }
+
+inline double sum_sqr(sparse_vec & v){
+  double sum = 0;
+  FOR_ITERATOR(i, v){
+     sum+= powf(v.get_nz_data(i),2);
+  }
+  return sum;
+}
+inline void debug_print_vec(const char * name,const vec& _vec, int len){
+  printf("%s ) ", name);
+  for (int i=0; i< len; i++)
+    if (_vec[i] == 0)
+      printf("      0    ");
+    else printf("%12.4g    ", _vec[i]);
+  printf("\n");
+}
+
+inline void dot2(const vec&  x1, const vec& x3, mat & Q, int j, int len){
+	for (int i=0; i< len; i++){
+		Q.set(i,j,(x1[i] * x3[i]));
+	}
+}
+inline void assign(vec & v1, sparse_vec & v2, int N){
+  v1 = zeros(N);
+  FOR_ITERATOR(i, v2){
+     v1[get_nz_index(v2, i)] = get_nz_data(v2, i);
+  }
+
+}
+
+inline double get(sparse_vec & v1, int pos){
+  FOR_ITERATOR(i, v1){
+     if (get_nz_index(v1, i) < pos)
+	continue;
+     else if (get_nz_index(v1, i) > pos)
+	break;
+     else if (get_nz_index(v1, i) == pos)
+	return get_nz_data(v1, i);
+  }
+  return 0;
+}
+
+
+inline double min( sparse_vec & dvec){
+ 
+  double dmin = 1e100;
+  FOR_ITERATOR(i, dvec){
+     dmin = std::min(dmin, get_nz_data(dvec, i));
+  }
+  return dmin;
+}
+
+inline double max( sparse_vec & dvec){
+ 
+  double dmax = -1e100;
+  FOR_ITERATOR(i, dvec){
+     dmax = std::max(dmax, get_nz_data(dvec, i));
+  }
+  return dmax;
+}
+inline void plus_mul( vec &v1,  sparse_vec &v2, double factor){
+  FOR_ITERATOR(i, v2){  
+    v1[get_nz_index(v2, i)] += factor*get_nz_data(v2, i);
+  }
+}
+
+inline double sum( sparse_vec & dvec){
+  double sum = 0;
+  FOR_ITERATOR(i, dvec){
+     sum += get_nz_data(dvec, i);
+  }
+  return sum;
+}
+inline vec dbl_fzeros(int size){ 
+  return itpp::zeros(size);
+}
+inline mat dbl_fzeros(int rows, int cols){
+  return itpp::zeros(rows, cols);
+}
+inline void print(sparse_vec & vec){
+  int cnt = 0;
+  FOR_ITERATOR(i, vec){
+    std::cout<<get_nz_index(vec, i)<<":"<< get_nz_data(vec, i) << " ";
+    cnt++;
+    if (cnt >= 20)
+       break;
+  }
+  std::cout<<std::endl;
+}
+inline vec init_vec(double * array, int size){
+  return vec(array, size);
+}
+/**
+ * It seems that it++ random number generator is not thread safe so
+ * we are using graphlab's
+ */
+inline ivec randi(int size, int from, int to){
+  ivec ret(size);
+  for (int i=0; i<size; i++)
+    ret[i]= graphlab::random::uniform<int>(from,to);
+  return ret;
+}
+inline int randi(int from, int to){
+  return graphlab::random::uniform<int>(from,to);
+}
+
 #endif
 
 #endif //eigen

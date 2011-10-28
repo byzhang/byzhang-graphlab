@@ -34,6 +34,8 @@
 #include "io.hpp"
 #include "../gabp/advanced_config.h"
 #include "lda.h"
+#include "lanczos.hpp"
+#include "svd.hpp"
 #ifdef OMP_SUPPORT
 #include "omp.h"
 #endif
@@ -52,9 +54,9 @@ using namespace std;
 advanced_config ac;
 problem_setup ps;
 
-const char * runmodesname[] = {"K-Means", "K-Means++", "Fuzzy K-Means", "Latent Dirichlet Allocation", "K-Shell decomposition", "Item-KNN", "User-Knn"};
+const char * runmodesname[] = {"K-Means", "K-Means++", "Fuzzy K-Means", "Latent Dirichlet Allocation", "K-Shell decomposition", "Item-KNN", "User-Knn", "SVD-EXPERIMENTAL"};
 const char * inittypenames[]= {"RANDOM", "ROUND_ROBIN", "KMEANS++", "RANDOM_CLUSTER"};
-const char * countername[] = {"DISTANCE_CALCULTION", "LDA_NEWTON_METHOD", "LDA_ACCUM_BETA", "LDA_LIKELIHOOD", "LDA_NORMALIZE"};
+const char * countername[] = {"DISTANCE_CALCULTION", "LDA_NEWTON_METHOD", "LDA_ACCUM_BETA", "LDA_LIKELIHOOD", "LDA_NORMALIZE", "SVD_MULT_A", "SVD_MULT_A_TRANPOSE", "CALC_RMSE_Q"};
 
 
 /* Function declerations */ 
@@ -64,9 +66,10 @@ void initialize_clusters(gl_types::core & glcore);
 void initialize_clusters(gl_types_kcores::core & glcore){ assert(false); }
 void dumpcluster();
 void tfidf_weighting();
-void plus_mul(vec& v1, sparse_vec &v2, double factor);
+void plus_mul(flt_dbl_vec& v1, sparse_flt_dbl_vec &v2, flt_dbl factor);
 void kcores_update_function(gl_types_kcores::iscope & scope, gl_types_kcores::icallback & scheduler);
 void kcores_main();
+//void init_lanczos();
 void knn_update_function(gl_types::iscope &scope, 
 			 gl_types::icallback &scheduler);
  
@@ -111,7 +114,7 @@ int calc_cluster_centers(){
 	       assert(false);
           }
           else {
-              ps.clusts.cluster_vec[i].location = ps.clusts.cluster_vec[i].cur_sum_of_points / ps.clusts.cluster_vec[i].num_assigned_points;
+              ps.clusts.cluster_vec[i].location = ps.clusts.cluster_vec[i].cur_sum_of_points / (flt_dbl)ps.clusts.cluster_vec[i].num_assigned_points;
               ps.clusts.cluster_vec[i].sum_sqr = sum_sqr(ps.clusts.cluster_vec[i].location);
           }
           if (ac.debug)
@@ -157,8 +160,12 @@ void add_tasks(gl_types::core & glcore){
 
   int start = 0;
   int end = ps.M;
-  if (ac.algorithm == ITEM_KNN || ac.algorithm == USER_KNN){
+  if (ac.algorithm == USER_KNN){
      end = ps.M_validation;
+  }
+  else if (ac.algorithm == ITEM_KNN){
+     start = ps.M_validation;
+     end = ps.N_validation+ps.M_validation;
   }
 
   std::vector<vertex_id_t> um;
@@ -181,7 +188,10 @@ void add_tasks(gl_types::core & glcore){
        glcore.add_tasks(um, knn_update_function, 1);
        break;
 
-     default: assert(false);
+     case SVD_EXPERIMENTAL:
+       break;
+
+      default: assert(false);
   }
 }
 
@@ -222,8 +232,8 @@ void init_random_cluster(){
    for (int i=0; i < ac.K; i++){
        int tries = 0;
        while(true){
-        ::plus(ps.clusts.cluster_vec[i].location,  ps.g<graph_type>()->vertex_data(randi(0, ps.M-1)).datapoint);
-  	 if (sum(abs(ps.clusts.cluster_vec[i].location))>0){	
+        ::plus(ps.clusts.cluster_vec[i].location,  ps.g<graph_type>()->vertex_data(::randi(0, ps.M-1)).datapoint);
+  	 if (abs_sum(ps.clusts.cluster_vec[i].location) > 0.0){	
             if (ac.debug)
               std::cout<<"Selected random cluster: " << i << " to be: " << ps.clusts.cluster_vec[i].location << std::endl;
             break;
@@ -258,6 +268,9 @@ void init(){
 
    case KSHELL_DECOMPOSITION:
      break; 
+
+   case SVD_EXPERIMENTAL:
+     break;
   }
 }
 
@@ -356,7 +369,11 @@ void start(command_line_options & clopts) {
     exit(0);
   }
   
-
+  if (ps.algorithm == SVD_EXPERIMENTAL && ac.svd_compile_eigenvectors && ac.reduce_mem_consumption){
+    extract_eigenvectors();
+    return;
+  }
+   
   add_tasks(glcore);
  
  
@@ -400,6 +417,11 @@ void start(command_line_options & clopts) {
       case USER_KNN:
        knn_main();
        break;
+
+
+      case SVD_EXPERIMENTAL:
+       svd(glcore);
+       break;
   }
 
 
@@ -416,7 +438,12 @@ void start(command_line_options & clopts) {
     	printf("Performance counters are: %d) %s, %g\n",i, countername[i], ps.counter[i]); 
   }
 
-  //write output matrices U,V,T to file
+
+  //to save memory output generation was done previously
+  if (ac.reduce_mem_consumption && ps.algorithm == SVD_EXPERIMENTAL && ac.svd_compile_eigenvectors)
+     return; 
+
+  //write output clusters and assignments to file
   if (ac.binaryoutput)
      export_to_binary_file<graph_type>();
   else if (ac.matrixmarket)
@@ -430,7 +457,7 @@ void start(command_line_options & clopts) {
 int do_main(int argc, const char *argv[]){
   global_logger().set_log_level(LOG_INFO);
   global_logger().set_log_to_console(true);
-  logstream(LOG_INFO)<< "Clustering Code (K-Means/Fuzzy K-means/K-Means++/LDA) written By Danny Bickson, CMU\nSend bug reports and comments to danny.bickson@gmail.com\n";
+  logstream(LOG_INFO)<< "Clustering Code (K-Means/Fuzzy K-means/K-Means++/LDA/K-Core/Item-KNN/User-KNN) written By Danny Bickson, CMU\nSend bug reports and comments to danny.bickson@gmail.com\n";
 
 #ifdef OMP_SUPPORT
   logstream(LOG_INFO)<<"Program compiled with OMP support\n";
@@ -458,6 +485,7 @@ int do_main(int argc, const char *argv[]){
     case LDA: 
     case ITEM_KNN:
     case USER_KNN:
+    case SVD_EXPERIMENTAL:
        start<gl_types::core, graph_type>(clopts);
        break;
 
