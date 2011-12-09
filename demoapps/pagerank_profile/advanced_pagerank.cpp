@@ -62,6 +62,7 @@ double RESET_PROB = 0.15;
 
 //! Global accuracy tolerance
 double ACCURACY = 1e-5;
+double EPSILON = 1e-1;
 
 std::vector<vertex_data> TRUERANK;
 std::ofstream OSTREAM;
@@ -115,17 +116,29 @@ public:
       sum += context.const_edge_data(edge).weight * 
        context.const_vertex_data(edge.source()).value;
     }
-    // Add random reset probability
     vdata.value = RESET_PROB + (1 - RESET_PROB) * sum;
+
+    // Begin racy update.
+    /*
+    vdata.value = 0;
+    foreach(const edge_type& edge, context.in_edges()) {
+      vdata.value += context.const_edge_data(edge).weight * 
+       context.const_vertex_data(edge.source()).value;
+    }
+    vdata.value = RESET_PROB + (1 - RESET_PROB) * vdata.value;
+    */
+    // End racy update.
+
     accum = (vdata.value - vdata.old_value);
-    if (dynamic_schedule)  {
+
+    if (dynamic_schedule) {
       if(std::fabs(accum) > ACCURACY || vdata.nupdates == 1 ) {
         vdata.old_value = vdata.value;
         reschedule_neighbors(context);
       }
     } else {
-        vdata.old_value = vdata.value;
-        context.schedule(context.vertex_id(), pagerank_update(accum));
+      vdata.old_value = vdata.value;
+      context.schedule(context.vertex_id(), pagerank_update(accum));
     }
   } // end of operator()  
 
@@ -147,8 +160,15 @@ public:
     vertex_data& vdata = context.vertex_data(); ++vdata.nupdates;
     vdata.value =  RESET_PROB + (1 - RESET_PROB) * accum;
     accum = vdata.value - vdata.old_value;
+    if(std::fabs(accum) > ACCURACY || vdata.nupdates == 1) {
+      vdata.old_value = vdata.value;    
+     // reschedule_neighbors(context);
+    }
     if (!dynamic_schedule)
+    {
+      vdata.old_value = vdata.value;    
       context.schedule(context.vertex_id(), pagerank_update(accum));
+    }
   } // end of apply
 
   // Reschedule neighbors 
@@ -172,26 +192,32 @@ class accumulator :
   public graphlab::iaccumulator<graph_type, pagerank_update, accumulator> {
     private:
       double l1;
+      size_t nupdates;
     public:
-      accumulator() : l1(0) { }
+      accumulator() : l1(0), nupdates(0) {}
       void operator()(icontext_type& context) {
         graph_type::vertex_id_type vid = context.vertex_id();
         vertex_data vdata = context.vertex_data();
         l1 += std::fabs(TRUERANK[vid].value - vdata.value);
+        nupdates += vdata.nupdates;
       }
 
       void operator+=(const accumulator& other) {
         l1 += other.l1;
+        nupdates += other.nupdates;
       }
 
       void finalize(iglobal_context_type& context) {
         if (OSTREAM.is_open()) {
-          OSTREAM << TIMER.current_time() << "\t" << l1 << std::endl;
+          OSTREAM << TIMER.current_time() << "\t" << nupdates << "\t" << l1 << std::endl;
         } else {
-          std::cout << TIMER.current_time() << "\t" << l1 << std::endl;
+          std::cout << TIMER.current_time() << "\t" << nupdates << "\t" << l1 << std::endl;
         }
-        if (l1 < ACCURACY)
+        if (l1 < EPSILON)
+        {
+          std::cout << "Converge to true pagerank!" << std::endl;
           context.terminate();
+        }
       }
 };
 
@@ -301,7 +327,7 @@ int main(int argc, char** argv) {
   // Setup sync operation.
   if (!TRUERANK.empty()) {
     accumulator  initial_accum;
-    size_t sync_interval = 1000;
+    size_t sync_interval = 100;
     std::cout << "Set up sync operation" << std::endl;
     core.add_sync("sync", initial_accum, sync_interval);
     core.add_global("L1", double(0));

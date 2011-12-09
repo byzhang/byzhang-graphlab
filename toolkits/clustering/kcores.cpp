@@ -48,6 +48,7 @@ int max_iter = 50;
 ivec active_nodes_num;
 ivec active_links_num;
 int iiter = 0; //current iteration
+int nodes = 0;
 
 enum kcore_output_fields{
   KCORE_INDEX = 1
@@ -79,7 +80,7 @@ struct edge_data {
 
 typedef graphlab::graph<vertex_data, edge_data> graph_type;
 
-void calc_initial_degree(graph_type * g, matrix_descriptor & desc){
+void calc_initial_degree(graph_type * g, bipartite_graph_descriptor & desc){
   int active = 0;
   for (int i=0; i< desc.total(); i++){
      vertex_data & data = g->vertex_data(i);
@@ -179,7 +180,8 @@ int main(int argc,  char *argv[]) {
   std::string datafile;
   std::string format = "matrixmarket";
   int unittest = 0;
-  int lineformat = MATRIX_MARKET_3;
+  int lineformat = MATRIX_MARKET_4;
+  bool gzip = true;
 
   clopts.attach_option("data", &datafile, datafile,
                        "matrix A input file");
@@ -191,7 +193,9 @@ int main(int argc,  char *argv[]) {
   clopts.attach_option("unittest", &unittest, unittest, 
 		       "unit testing 0=None, 1=TBD");
   clopts.attach_option("max_iter", &max_iter, max_iter, "maximal number of cores");
-  
+  clopts.attach_option("nodes", &nodes, nodes, "number of nodes"); 
+  clopts.attach_option("gzip", &gzip, gzip, "gzipped input file?");
+ 
   // Parse the command line arguments
   if(!clopts.parse(argc, argv)) {
     std::cout << "Invalid arguments!" << std::endl;
@@ -224,10 +228,20 @@ int main(int argc,  char *argv[]) {
   }
 
   std::cout << "Load graph" << std::endl;
-  matrix_descriptor matrix_info;
-  load_graph(datafile, format, matrix_info, core.graph(), lineformat);
+  bipartite_graph_descriptor matrix_info;
 
-  calc_initial_degree(&core.graph(), matrix_info);
+  nodes = 123306178;
+  matrix_info.rows = matrix_info.cols = nodes;
+
+  matrix_info.nonzeros = 244204347;
+  load_cpp_graph("HIDDEN20050803.gz.out.gz", format, matrix_info, core.graph(), lineformat, gzip);
+  matrix_info.nonzeros = 306283479;
+  load_cpp_graph("HIDDEN20050810.gz.out.gz", format, matrix_info, core.graph(), lineformat, gzip);
+  matrix_info.nonzeros = 121399665;
+  load_cpp_graph("HIDDEN20050817.gz.out.gz", format, matrix_info, core.graph(), lineformat, gzip);
+  matrix_info.nonzeros = 255516101;
+  load_cpp_graph("HIDDEN20050824.gz.out.gz", format, matrix_info, core.graph(), lineformat, gzip);
+   calc_initial_degree(&core.graph(), matrix_info);
 
   //std::cout << "Schedule all vertices" << std::endl;
   //core.schedule_all(kcore_update());
@@ -274,7 +288,7 @@ int main(int argc,  char *argv[]) {
 
 
   vec ret = fill_output(&core.graph(), matrix_info, KCORE_INDEX);
-  write_output_vector(datafile + "x.out", format, ret);
+  write_output_vector(datafile + "x.out", format, ret,false);
 
 
   if (unittest == 1){
