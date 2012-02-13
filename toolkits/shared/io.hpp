@@ -301,7 +301,7 @@ bool load_matrixmarket_cpp_graph(const std::string& fname,
     const edge_data_type edata(val);
 
     if (debug && desc.nonzeros < 100)
-      logstream(LOG_INFO)<<"Adding an edge: " << source << "->" << target << " with val: " << std::endl;
+      logstream(LOG_INFO)<<"Adding an edge: " << source << "->" << target << " with val: " << val << std::endl;
 
     if(is_square && source == target) 
       graph.vertex_data(source).add_self_edge(val);
@@ -839,9 +839,16 @@ bool load_binary_graph(const std::string& fname,
   bool is_square = desc.is_square();
 
   std::cout << "Adding edges." << std::endl;
+  int step = 0;
+  if (desc.nonzeros > 10000000)
+     step = desc.nonzeros / 100;
+
   for(size_t i = 0; i < size_t(desc.nonzeros); ++i) {    
     int row = 0, col = 0;  
     double val = 0;
+    if (step > 0 && (i % step == 0))
+       logstream(LOG_INFO) << "Loaded " << i << " edges for far." << std::endl;
+
     if(fscanf(fptr, "%d %d %lg\n", &row, &col, &val) != 3) {
       logstream(LOG_FATAL) 
         << "Error reading file " << fname << " on line: " << i << std::endl;
