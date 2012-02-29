@@ -43,14 +43,13 @@ namespace graphlab {
 
    /** \ingroup group_schedulers
     */
-  template<typename Engine>
-  class sweep_scheduler : public ischeduler<Engine> {
+  template<typename Graph, typename UpdateFunctor>
+  class sweep_scheduler : public ischeduler<Graph, UpdateFunctor> {
   public:
 
 
-    typedef ischeduler<Engine> base;
+    typedef ischeduler<Graph, UpdateFunctor> base;
     typedef typename base::graph_type graph_type;
-    typedef typename base::engine_type engine_type;
     typedef typename base::vertex_id_type vertex_id_type;
     typedef typename base::update_functor_type update_functor_type;
     typedef critical_termination terminator_type;
@@ -102,7 +101,6 @@ namespace graphlab {
         typedef std::pair<int, vertex_id_type> pair_type;
         std::vector< pair_type > vec(graph.num_vertices());      
         for(vertex_id_type i = 0; i < vec.size(); ++i) {
-          typedef graph_ops<graph_type> graph_ops;
           const int degree = graph_ops::num_neighbors(graph, i);
           vec[i] = use_max_degree? pair_type(-degree,i) : pair_type(degree,i);
         }

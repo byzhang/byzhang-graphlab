@@ -108,6 +108,7 @@ namespace graphlab {
         listenthread = NULL;
       }
       listenhandler = NULL;
+      // sleep for a while so the sender threads have time to flush
       logstream(LOG_INFO) << "Closing outgoing sockets" << std::endl;
       // close all outgoing sockets
       for (size_t i = 0;i < outsocks.size(); ++i) {
@@ -120,14 +121,14 @@ namespace graphlab {
       // close all incoming sockets
       for (size_t i = 0;i < socks.size(); ++i) {
         if (socks[i] > 0) {
-          ::close(socks[i]);
-          socks[i] = -1;
           // join the receiving threads
           // remember that the receiving handler is self deleting
           if (handlerthreads[i] != NULL) {
             handlerthreads[i]->join();
             delete handlerthreads[i];
           }
+          ::close(socks[i]);
+          socks[i] = -1;
           handlerthreads[i] = NULL;
           handlers[i] = NULL;
         }
@@ -179,11 +180,12 @@ namespace graphlab {
   
  
 #ifdef COMM_DEBUG
-      logstream(LOG_INFO) << len << " bytes --> " << target  << std::endl;
+      logstream(LOG_INFO) << len1+len2 << " bytes --> " << target  << std::endl;
 #endif
       // amount of data to transmit
       size_t dataleft = len1 + len2;
       // while there is still data to be sent
+      BEGIN_TRACEPOINT(tcp_send_call);
       while(dataleft > 0) {
         size_t ret = sendmsg(outsocks[target], &data, 0);
         // decrement the counter
@@ -216,18 +218,22 @@ namespace graphlab {
         data.msg_iov = newiovecptr;
         data.msg_iovlen = newiovlen;
       }
+      END_TRACEPOINT(tcp_send_call);
     }
 
     int dc_tcp_comm::sendtosock(int sockfd, const char* buf, size_t len) {
       size_t numsent = 0;
+      BEGIN_TRACEPOINT(tcp_send_call);
       while (numsent < len) {
         ssize_t ret = ::send(sockfd, buf + numsent, len - numsent, 0);
         if (ret < 0) {
           logstream(LOG_ERROR) << "send error: " << strerror(errno) << std::endl;
+          END_TRACEPOINT(tcp_send_call);
           return errno;
         }
         numsent += ret;
       }
+      END_TRACEPOINT(tcp_send_call);
       return 0;
     }
   
@@ -365,47 +371,24 @@ namespace graphlab {
     void dc_tcp_comm::socket_handler::run() {
       // get a direct pointer to my receiver
       dc_receive* receiver = owner.receiver[sourceid];
-  
-      if (receiver->direct_access_support()) {
-        // we have direct buffer access!
-        size_t buflength;
-        char *c = receiver->get_buffer(buflength);
-        while(1) {      
-          ssize_t msglen = recv(fd, c, buflength, 0);
-          // if msglen == 0, the scoket is closed
-          if (msglen <= 0) {
-            owner.socks[sourceid] = -1;
-            // self deleting
-            delete this;
-            break;
-          }
-          owner.network_bytesreceived.inc(msglen);
-#ifdef COMM_DEBUG
-          logstream(LOG_INFO) << msglen << " bytes <-- " 
-                              << sourceid  << std::endl;
-#endif
-          c = receiver->advance_buffer(c, msglen, buflength);
+      // we have direct buffer access!
+      size_t buflength;
+      char *c = receiver->get_buffer(buflength);
+      while(1) {
+        ssize_t msglen = recv(fd, c, buflength, 0);
+        // if msglen == 0, the scoket is closed
+        if (msglen <= 0) {
+          owner.socks[sourceid] = -1;
+          // self deleting
+          delete this;
+          break;
         }
-      } else {
-        // fall back to using my own buffer
-        while(1) {
-          char c[10240];
-      
-          ssize_t msglen = recv(fd, c, 10240, 0);
-          // if msglen == 0, the scoket is closed
-          if (msglen <= 0) {
-            owner.socks[sourceid] = -1;
-            // self deleting
-            delete this;
-            break;
-          }
+        owner.network_bytesreceived.inc(msglen);
 #ifdef COMM_DEBUG
-          logstream(LOG_INFO) << msglen << " bytes <-- " 
-                              << sourceid  << std::endl;
+        logstream(LOG_INFO) << msglen << " bytes <-- "
+                            << sourceid  << std::endl;
 #endif
-          owner.network_bytesreceived.inc(msglen);
-          receiver->incoming_data(sourceid, c, msglen);
-        }
+        c = receiver->advance_buffer(c, msglen, buflength);
       }
     } // end of run
 

@@ -138,13 +138,28 @@ else ()
 endif()
 
 
+if(HADOOP_HOME)
+  message(STATUS "Found hadoop home: " ${HADOOP_HOME})
+  set(HADOOP_FOUND 1 CACHE BOOL "Hadoop was found")
+  include_directories(${HADOOP_HOME}/src/c++/libhdfs)
+  link_directories(${HADOOP_HOME}/c++/Linux-amd64-64/lib)   
+else(HADOOP_HOME)
+  message(STATUS "Hadoop was not found but is strictly optional")      
+endif(HADOOP_HOME)
+
+
+
+
+
+
 
 #Find the JNI library
 find_package(JNI)
 if(EXISTS ${JAVA_INCLUDE_PATH}/jni.h  )
   set(JNI_REALLY_FOUND 1 CACHE BOOL "Tests whether the header
   actually exists")
-message(STATUS "jni.h was found at " ${JAVA_INCLUDE_PATH}/jni.h)
+  message(STATUS "jni.h was found at " ${JAVA_INCLUDE_PATH}/jni.h)
+  include_directories(${JNI_INCLUDE_DIRS})
 else( )
   set(JNI_REALLY_FOUND 0 CACHE BOOL "Tests whether the header
   actually exists")
@@ -294,19 +309,38 @@ set(CMAKE_REQUIRED_LIBRARIES ${crlbackup})
 
 
 
+if( HADOOP_FOUND AND JNI_REALLY_FOUND )
+  add_definitions(-DHAS_HADOOP)
+  link_libraries(hdfs ${JAVA_JVM_LIBRARY})
+endif ( HADOOP_FOUND AND JNI_REALLY_FOUND )
+
+
+
+
+
 
 # test for system specific features
 
 
 
+
 # check for TCMalloc
+if(TCMALLOC_ROOT) 
+  link_directories(${TCMALLOC_ROOT}/lib)
+  include_directories(${TCMALLOC_ROOT}/include)
+endif()
+
 check_library_exists("tcmalloc -lpthread" malloc "" TCMALLOC-FOUND)
 if (TCMALLOC-FOUND)
   message(STATUS "tcmalloc found. Using it everywhere")
-#  link_libraries(tcmalloc)
+  link_libraries(tcmalloc)
 else()
   message(STATUS "tcmalloc was not found but is optional.")
 endif()
+
+
+
+
 
 
 # architecture detection
@@ -355,8 +389,6 @@ ENDIF(MPI_FOUND)
 
 
 
-
-
 # add boost to link directories and link libraries
 link_directories(
   ${Boost_LIBRARY_DIRS}
@@ -367,6 +399,8 @@ link_directories(
 if(NOT ${CMAKE_SYSTEM} MATCHES Windows)
   link_libraries(pthread gomp)   
 endif(NOT ${CMAKE_SYSTEM} MATCHES Windows)
+
+
 
 
 
@@ -482,6 +516,7 @@ endmacro(ADD_CXXTEST)
 ## ===================================================================
 # Useful macros 
 macro(copy_file NAME)
+  message(STATUS "Copying File: " ${NAME})
   file(INSTALL ${CMAKE_CURRENT_SOURCE_DIR}/${NAME} 
     DESTINATION   ${CMAKE_CURRENT_BINARY_DIR} )
   ## The new cmake has much better ways to do this.  We should switch
@@ -498,8 +533,10 @@ endmacro(copy_file NAME)
 
 
 macro(copy_files NAME)
-  file(INSTALL  DESTINATION  ${CMAKE_CURRENT_BINARY_DIR} 
-    FILES_MATCHING PATTERN ${CMAKE_CURRENT_SOURCE_DIR}/${NAME} )
+  message(STATUS "Copying Files: " ${NAME})
+  file(INSTALL ${CMAKE_CURRENT_SOURCE_DIR}/  
+    DESTINATION  ${CMAKE_CURRENT_BINARY_DIR} 
+    FILES_MATCHING PATTERN ${NAME} )
 endmacro(copy_files NAME)
 
 
@@ -572,6 +609,8 @@ endmacro(add_zoltan_executable)
 
 
 
+
+
 # MACRO(dist2_target_link_libraries NAME)
 #   IF(MPI_FOUND)
 #     TARGET_LINK_LIBRARIES(${NAME} ${ARGN})
@@ -601,8 +640,9 @@ macro(add_jni_library NAME)
     #         SET(CMAKE_SHARED_MODULE_CREATE_CXX_FLAGS "-dynamiclib -m64 ")
     #         SET_TARGET_PROPERTIES(${NAME} PROPERTIES SUFFIX .jnilib)
     # ENDIF (APPLE)
+  elseif ()
+    message(STATUS "Not building " ${NAME} " because JNI was not found")
   endif ()
-  message(STATUS "Not building " ${NAME} " because JNI was not found")
 endmacro(add_jni_library)
 
 

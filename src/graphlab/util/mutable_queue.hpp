@@ -329,14 +329,15 @@ namespace graphlab {
 
 
 
-
-
-
+ 
+  // define a blank cosntant for the mutable queue
+#define BLANK (size_t(-1))
 
   template <typename Priority>
   class mutable_queue<size_t, Priority> {
   public:
 
+    
     //! An element of the heap.
     typedef typename std::pair<size_t, Priority> heap_element;
 
@@ -352,9 +353,6 @@ namespace graphlab {
 
     //! The map used to map from items to indexes in the heap.
     index_map_type index_map;
-
-    //! Used to mark entries in the index map that are blank
-    const index_type BLANK;
 
     //! Returns the index of the left child of the supplied index.
     size_t left(size_t i) const { 
@@ -412,7 +410,7 @@ namespace graphlab {
   public:
     //! Default constructor.
     mutable_queue()
-      :	heap(1, std::make_pair(-1, Priority())), BLANK(-1) { }
+      :	heap(1, std::make_pair(-1, Priority())) { }
 
     //! Returns the number of elements in the heap.
     size_t size() const {
@@ -544,6 +542,8 @@ namespace graphlab {
       }
     }
   }; // class mutable_queue
+
+#undef BLANK
 
 } // namespace graphlab
 

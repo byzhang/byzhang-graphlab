@@ -80,6 +80,8 @@ namespace graphlab {
 
     dc_dist_object<distributed_batch_ingress> rpc;
     graph_type& graph;
+    mutex local_graph_lock;
+    mutex lvid2record_lock;
 
     /** The map from vertex_id to its degree on this proc.*/
     typedef typename boost::unordered_map<vertex_id_type, size_t>  vid2degree_type;
@@ -156,7 +158,7 @@ namespace graphlab {
       std::vector<lvid_type> local_target_arr;
       local_target_arr.reserve(target_arr.size());
 
-      graph.lvid2record_lock.lock();
+      lvid2record_lock.lock();
       lvid_type max_lvid = 0;
       for (size_t i = 0; i < source_arr.size(); ++i) {
         vertex_id_type source = source_arr[i];
@@ -193,14 +195,14 @@ namespace graphlab {
         }
         local_degree_count[i].clear();
       }
-      graph.lvid2record_lock.unlock(); 
+      lvid2record_lock.unlock(); 
 
-      graph.local_graph_lock.lock();
+      local_graph_lock.lock();
       if (max_lvid > 0 && max_lvid >= graph.local_graph.num_vertices()) {
         graph.local_graph.resize(max_lvid + 1);
       }
       graph.local_graph.add_block_edges(local_source_arr, local_target_arr, edata_arr);
-      graph.local_graph_lock.unlock();
+      local_graph_lock.unlock();
     } // end of add edges
     
 
@@ -302,6 +304,12 @@ namespace graphlab {
           best_asg = std::min(best_asg, std::make_pair(counts[proc], proc));
         record.owner = best_asg.second;
         counts[record.owner]++;
+        // remove the owner from the mirrors
+        ASSERT_GT(record.mirrors.size(), 0);        
+        typedef std::vector<procid_t>::iterator iter_type;
+        for(iter_type i = record.mirrors.begin(); i < record.mirrors.end(); ++i) {
+          if(*i == record.owner) { record.mirrors.erase(i); break; }
+        }
       } // end of loop over 
 
       // Send the data to all the processors
@@ -332,13 +340,10 @@ namespace graphlab {
         foreach (vid_shuffle_type vid_and_rec, vertex_assign) {
           const vertex_id_type& vid = vid_and_rec.first;
           shuffle_record& shuffle_rec = vid_and_rec.second;      
-
-
           lvid_type lvid = graph.vid2lvid[vid];
-          vertex_record& vrecord = graph.lvid2record[lvid];
-          vrecord.mirrors.swap(shuffle_rec.mirrors);
+          vertex_record& vrecord = graph.lvid2record[lvid];          
+          vrecord._mirrors.swap(shuffle_rec.mirrors);
           vrecord.owner = shuffle_rec.owner;
-
           graph.local_graph.vertex_data(lvid) = shuffle_rec.vdata;
           vrecord.num_in_edges = shuffle_rec.num_in_edges;
           vrecord.num_out_edges = shuffle_rec.num_out_edges;
@@ -367,7 +372,7 @@ namespace graphlab {
       proc_num_vertices.assign(rpc.numprocs(), graph.num_local_vertices());
       mpi_tools::all2all(proc_num_vertices, proc_num_vertices);
       for (procid_t i = 0; i < rpc.numprocs(); ++i) {
-        graph.nreplica += proc_num_vertices[i];
+        graph.nreplicas += proc_num_vertices[i];
       }
 
       proc_num_own_vertices.assign(rpc.numprocs(), graph.num_local_own_vertices());
@@ -479,7 +484,7 @@ namespace graphlab {
         /// TODO: What is going on here?  Do you really mean to return
         /// immediately
         // Sorry, this is to compare naive partition with greedy partition.
-        // return graph_ptr->edge_to_proc(src, dst);
+        //return edge_to_proc(src, dst);
          
         procid_t best_proc = -1; 
         size_t src_proc = vertex_to_init_proc(src);

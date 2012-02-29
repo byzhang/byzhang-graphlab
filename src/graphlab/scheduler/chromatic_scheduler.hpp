@@ -61,13 +61,12 @@ namespace graphlab {
    *
    * Chromatic Scheduler
    */
-  template<typename Engine>
-  class chromatic_scheduler : public ischeduler<Engine> {
+  template<typename Graph, typename UpdateFunctor>
+  class chromatic_scheduler : public ischeduler<Graph, UpdateFunctor> {
   public:
 
-    typedef ischeduler<Engine> base;
+    typedef ischeduler<Graph, UpdateFunctor> base;
     typedef typename base::graph_type graph_type;
-    typedef typename base::engine_type engine_type;
     typedef typename base::vertex_id_type vertex_id_type;
     typedef typename base::update_functor_type update_functor_type;
     typedef typename base::vertex_color_type    vertex_color_type;
@@ -108,7 +107,6 @@ namespace graphlab {
       // Verify the coloring
       //ASSERT_TRUE(graph.valid_coloring());
 
-      typedef graph_ops<graph_type> graph_ops;
 
       // parse the options
       bool auto_color = false;
@@ -155,7 +153,12 @@ namespace graphlab {
       // Does nothing
     }
 
-   
+
+    void schedule_from_execution_thread(const vertex_id_type vid, 
+                                        const update_functor_type& fun) {  
+      // Does nothing
+    }
+
     void schedule_all(const update_functor_type& fun) {
       for(size_t i = 0; i < functors.size(); ++i) 
         functors[i] = fun;

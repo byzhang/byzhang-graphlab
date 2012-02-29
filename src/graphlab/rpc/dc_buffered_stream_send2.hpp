@@ -21,8 +21,8 @@
  */
 
 
-#ifndef DC_BUFFERED_STREAM_SEND_HPP
-#define DC_BUFFERED_STREAM_SEND_HPP
+#ifndef DC_BUFFERED_STREAM_SEND2_HPP
+#define DC_BUFFERED_STREAM_SEND2_HPP
 #include <iostream>
 #include <boost/function.hpp>
 #include <boost/bind.hpp>
@@ -32,17 +32,13 @@
 #include <graphlab/rpc/dc_comm_base.hpp>
 #include <graphlab/rpc/dc_send.hpp>
 #include <graphlab/parallel/pthread_tools.hpp>
-#include <graphlab/util/blocking_queue.hpp>
+#include <graphlab/util/resizing_array_sink.hpp>
 #include <graphlab/logger/logger.hpp>
 namespace graphlab {
 class distributed_control;
 
 namespace dc_impl {
 
-struct expqueue_entry{
-  char* c;
-  size_t len;
-};
 
 /**
    \ingroup rpc
@@ -59,23 +55,27 @@ Sender for the dc class.
   This can be enabled by passing "buffered_queued_send=yes"
   in the distributed control initstring.
   
-  dc_buffered_stream_send2 is similar, but does not perform write combining.
+  dc_buffered_stream_send22 is similar, but does not perform write combining.
   
 */
 
-class dc_buffered_stream_send: public dc_send{
+class dc_buffered_stream_send2: public dc_send{
  public:
-  dc_buffered_stream_send(distributed_control* dc, 
+  dc_buffered_stream_send2(distributed_control* dc, 
                                    dc_comm_base *comm, 
                                    procid_t target) : 
-    dc(dc),  comm(comm), target(target), done(false), 
-    wait_count(1024000) { 
+                  dc(dc),  comm(comm), target(target), done(false), 
+                  flush_flag(false), return_signal(false),
+                  rtdsc_per_ms(estimate_ticks_per_second() / 1000) {
+    char bufpad[sizeof(block_header_type)];
+    writebuffer.write(bufpad, sizeof(block_header_type));
+    sendbuffer.write(bufpad, sizeof(block_header_type));
     thr = launch_in_new_thread(boost::bind
-                               (&dc_buffered_stream_send::send_loop, 
+                               (&dc_buffered_stream_send2::send_loop, 
                                 this));
   }
   
-  ~dc_buffered_stream_send() {
+  ~dc_buffered_stream_send2() {
   }
   
 
@@ -102,33 +102,56 @@ class dc_buffered_stream_send: public dc_send{
 
   void send_loop();
   
-
+  void flush();
+  
   void shutdown();
+  
+  bool adaptive_send_decision();
   
   inline size_t bytes_sent() {
     return bytessent.value;
   }
+
+  /**
+   * Possible Options include 
+   * nanosecond_wait: Maximum amount of time remote calls can age 
+   *                  in the queue before the queue is flushed. (1000000)
+   * wait_count_bytes: Maximum number of bytes in the buffer before
+   *                   the queue is flushed. This number is self adjusting
+   *                   with an exponential scaling rate and should not need
+   *                   to be modified. (initial = 1024000)
+   */
+  size_t set_option(std::string opt, size_t val);
 
  private:
   /// pointer to the owner
   distributed_control* dc;
   dc_comm_base *comm;
   procid_t target;
-
-  blocking_queue<expqueue_entry> sendqueue;
+  
+  charstream_impl::resizing_array_sink<true> writebuffer;
+  charstream_impl::resizing_array_sink<true> sendbuffer;
+  
+  mutex lock;
+  mutex sendlock;
+  conditional cond;
 
   thread thr;
   bool done;
-  atomic<size_t> bytessent;
-  size_t wait_count;
-  // parameters for write combining.
-  // write combining will start if the data size is below the lower threshold
-  // and continue until it reaches the upper threshold
-  static const size_t combine_lower_threshold = 10240;
-  static const size_t combine_upper_threshold = 65536;  // 1 packet
 
-  void write_combining_send(std::deque<expqueue_entry>& e);
-
+  static atomic<size_t> callcount;
+  atomic<size_t> bytessent; 
+  
+  bool flush_flag;
+  bool return_signal;
+  conditional flush_return_cond;
+  
+  static double calls_per_ms;
+  
+  size_t nanosecond_wait;
+  static unsigned long long prevtime;
+  unsigned long long rtdsc_per_ms;
+  static mutex callcountmutex;
 };
 
 

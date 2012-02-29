@@ -51,8 +51,8 @@ class pagerank_update :
   double prio;
 public:
   pagerank_update(const double& prio = 0) : prio(prio) { }
-  double priority() const { return prio; }
-  void operator+=(const pagerank_update& other) { prio += other.prio; }
+  inline double priority() const { return prio; }
+  inline void operator+=(const pagerank_update& other) { prio += other.prio; }
   void operator()(icontext_type& context) {
     vertex_data& vdata = context.vertex_data(); ++vdata.nupdates;
     // Compute weighted sum of neighbors
@@ -106,7 +106,7 @@ int main(int argc, char** argv) {
   graphlab::core<graph_type, pagerank_update> core;
   core.set_options(clopts); // attach the command line options to the core
   std::cout << "Loading graph from file" << std::endl;
-  const bool success = graphlab::graph_ops<graph_type>::
+  const bool success = graphlab::graph_ops::
     load_structure(graph_file, format, core.graph());
   if(!success) {
     std::cout << "Error in reading file: " << graph_file << std::endl;

@@ -51,12 +51,14 @@
 #include <graphlab/rpc/dc_dist_object.hpp>
 #include <graphlab/util/mpi_tools.hpp>
 
+#include <graphlab/options/graphlab_options.hpp>
 #include <graphlab/serialization/iarchive.hpp>
 #include <graphlab/serialization/oarchive.hpp>
 #include <graphlab/graph/graph.hpp>
 #include <graphlab/graph/graph2.hpp>
 #include <graphlab/graph/idistributed_ingress.hpp>
 #include <graphlab/graph/distributed_batch_ingress.hpp>
+#include <graphlab/graph/distributed_random_ingress.hpp>
 
 
 
@@ -86,6 +88,14 @@ namespace graphlab {
 
     typedef idistributed_ingress<VertexData, EdgeData> 
     idistributed_ingress_type;
+   
+    typedef distributed_batch_ingress<VertexData, EdgeData>
+        distributed_batch_ingress_type;
+    friend class distributed_batch_ingress<VertexData, EdgeData>;
+
+    typedef distributed_random_ingress<VertexData, EdgeData>
+        distributed_random_ingress_type;
+    friend class distributed_random_ingress<VertexData, EdgeData>;
 
 
     /** 
@@ -103,21 +113,25 @@ namespace graphlab {
     /** This class represents an edge with source() and target()*/
     class edge_type {
     private:
-      vertex_id_type _src;
-      vertex_id_type _tar;
-      edge_id_type _eid;
+      lvid_type lsrc, ltar;
+      vertex_id_type src,  tar;
+      edge_id_type eid;
       procid_t _owner;
       bool _empty;      
-      inline edge_id_type edge_id() const { return _eid; }
+      inline edge_id_type edge_id() const { return eid; }
       friend class distributed_graph;
     public:
-      edge_type (vertex_id_type src, vertex_id_type tar,
+      edge_type (lvid_type lsrc, lvid_type ltar,
+                 vertex_id_type src, vertex_id_type tar,
                  edge_id_type eid, procid_t owner):
-        _src(src), _tar(tar), _eid(eid), _owner(owner), _empty(false) { }
-      edge_type () : _src(-1), _tar(-1), _eid(-1), _owner(-1), _empty(true) { }
-      inline vertex_id_type source() const { ASSERT_FALSE(empty()); return _src; }
-      inline vertex_id_type target() const { ASSERT_FALSE(empty()); return _tar; }
-
+        lsrc(lsrc), ltar(ltar), src(src), tar(tar), eid(eid), 
+        _owner(owner), _empty(false) { }
+      edge_type () : lsrc(-1), ltar(-1), src(-1), tar(-1), eid(-1), 
+                     _owner(-1), _empty(true) { }
+      inline vertex_id_type source() const { return src; }
+      inline vertex_id_type target() const { return tar; }
+      inline lvid_type l_source() const { return lsrc; }
+      inline lvid_type l_target() const { return ltar; }
       procid_t owner() const { return _owner; }
       bool empty() const { return _empty; }
     }; // end of class edge_type.
@@ -133,20 +147,21 @@ namespace graphlab {
       struct edge_functor : 
         public std::unary_function<local_edge_type, edge_type> {
 
-        edge_functor(const distributed_graph* graph_ptr = NULL) : 
+        inline edge_functor(const distributed_graph* graph_ptr = NULL) : 
           graph_ptr(graph_ptr) { }
 
-        edge_type operator()(const local_edge_type& edge) const {
+        inline edge_type operator()(const local_edge_type& edge) const {
           if (edge.empty()) {
             return edge_type();
           } else {
-            ASSERT_TRUE(graph_ptr != NULL);
-            const vertex_id_type source = graph_ptr->global_vid(edge.source());
-            const vertex_id_type target = graph_ptr->global_vid(edge.target());
+            const lvid_type lsource = edge.source();
+            const lvid_type ltarget = edge.target();
+            const vertex_id_type source = graph_ptr->global_vid(lsource);
+            const vertex_id_type target = graph_ptr->global_vid(ltarget);
             const vertex_id_type eid = 
               graph_ptr->global_eid(graph_ptr->local_eid(edge));
             const procid_t owner = graph_ptr->rpc.procid();
-            return edge_type(source, target, eid, owner);
+            return edge_type(lsource, ltarget, source, target, eid, owner);
           }
         } // end of operator()
         const distributed_graph* graph_ptr;
@@ -158,7 +173,7 @@ namespace graphlab {
       typedef iterator const_iterator;
       typedef edge_type value_type;
     private:
-      const_iterator begin_iter, end_iter;      
+      const_iterator begin_iter, end_iter;
     public:
       local_edge_list_type(const distributed_graph* graph_ptr = NULL,
                            const lgraph_edge_list_type& lgraph_edge_list =
@@ -412,27 +427,27 @@ namespace graphlab {
       /// The local vid of this vertex on this proc
       vertex_id_type gvid;
       /// The number of in edges
-      size_t num_in_edges;
-      /// The nubmer of out edges
-      size_t num_out_edges;
-      /// The set of proc that mirror this vertex.
-      std::vector<procid_t> mirrors;
+      vertex_id_type num_in_edges, num_out_edges;
+      /** The set of proc that mirror this vertex.  The owner should
+          NOT be in this set.*/
+      std::vector<procid_t> _mirrors;
       vertex_record() : 
         owner(-1), gvid(-1), num_in_edges(0), num_out_edges(0) { }
       vertex_record(const vertex_id_type& vid) : 
         owner(-1), gvid(vid), num_in_edges(0), num_out_edges(0) { }
-      procid_t get_owner () const {
-        return owner;
-      }
-      const std::vector<procid_t>& get_replicas () const {
-        return mirrors;
-      }
+      procid_t get_owner () const { return owner; }
+      const std::vector<procid_t>& mirrors() const { return _mirrors; }
+      size_t num_mirrors() const { return _mirrors.size(); }
     }; // end of vertex_record
+
+
 
 
     /// The master vertex record map
     // typedef boost::unordered_map<vertex_id_type, vertex_record>  vid2record_type;
     typedef std::vector<vertex_record> lvid2record_type;
+
+  private:
       
     // PRIVATE DATA MEMBERS ===================================================> 
     /** The rpc interface for this class */
@@ -440,11 +455,9 @@ namespace graphlab {
 
     /** The local graph data */
     local_graph_type local_graph;
-    mutex local_graph_lock;
     
     /** The map from global vertex ids to vertex records */
     lvid2record_type lvid2record;
-    mutex lvid2record_lock;
     
     /** The map from local vertex ids back to global vertex ids */
     boost::unordered_map<vertex_id_type, lvid_type> vid2lvid;
@@ -456,7 +469,7 @@ namespace graphlab {
     size_t local_own_nverts;
 
     /** The global number of vertex replica */
-    size_t nreplica;
+    size_t nreplicas;
 
     /** The beginning edge id for this machine */
     size_t begin_eid;
@@ -467,17 +480,32 @@ namespace graphlab {
   public:
 
     // CONSTRUCTORS ==========================================================>
-    distributed_graph(distributed_control& dc) : 
-      rpc(dc, this), nverts(0), nedges(0), local_own_nverts(0), nreplica(0) {
+    distributed_graph(distributed_control& dc, 
+                      const graphlab_options& opts = graphlab_options() ) : 
+      rpc(dc, this), nverts(0), nedges(0), local_own_nverts(0), nreplicas(0),
+      ingress_ptr(NULL) {
       rpc.barrier();
-      typedef distributed_batch_ingress<vertex_data_type, edge_data_type>
-        distributed_batch_ingress_type;
-      ingress_ptr = new distributed_batch_ingress_type(dc, *this);
+      std::string ingress_method = "random";
+      opts.get_graph_options().get_option("ingress", ingress_method);
+      set_ingress_method(ingress_method);
     }
 
 
 
     // METHODS ===============================================================>
+
+
+    void set_ingress_method(const std::string& method) {
+      if(ingress_ptr != NULL) { delete ingress_ptr; ingress_ptr = NULL; }
+      if(method == "batch") {
+        logstream(LOG_INFO) << "Using batch ingress" << std::endl;
+        ingress_ptr = new distributed_batch_ingress_type(rpc.dc(), *this);
+      } else {
+        logstream(LOG_INFO) << "Using random ingress" << std::endl;
+        ingress_ptr = new distributed_random_ingress_type(rpc.dc(), *this);
+      }
+    } // end of set ingress method
+    
 
     /**
      * Finalize is used to complete graph ingress by resolving vertex
@@ -496,7 +524,7 @@ namespace graphlab {
     size_t num_edges() const { return nedges; }
 
     /** \brief Get the size of replica */
-    size_t num_replica() const { return nreplica; }
+    size_t num_replicas() const { return nreplicas; }
 
     /** Return the color of a vertex */
     vertex_color_type color(vertex_id_type vid) const { 
@@ -520,8 +548,6 @@ namespace graphlab {
       return edge_type();
     }
 
-
-
     /** \brief Get the number of vertices local to this proc */
     size_t num_local_vertices() const { return local_graph.num_vertices(); }
 
@@ -544,10 +570,10 @@ namespace graphlab {
       return lvid2record[lvid].gvid;
     } // end of global_vertex_id
 
-    vertex_record& get_vertex_record(const vertex_id_type vid) {
-      ASSERT_LT(local_vid(vid), lvid2record.size());
-      return lvid2record[local_vid(vid)];
-    }
+    // vertex_record& get_vertex_record(const vertex_id_type vid) {
+    //   ASSERT_LT(local_vid(vid), lvid2record.size());
+    //   return lvid2record[local_vid(vid)];
+    // }
 
     const vertex_record& get_vertex_record(const vertex_id_type vid) const {
       ASSERT_LT(local_vid(vid), lvid2record.size());
