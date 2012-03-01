@@ -291,7 +291,7 @@ namespace graphlab {
     distributed_fscope_engine(distributed_control &dc, graph_type& graph, 
                               size_t ncpus) : 
       rmi(dc, this), graph(graph), threads(ncpus),
-      vlocks(graph.num_vertices()), scheduler_ptr(NULL), 
+      vlocks(graph.num_local_vertices()), scheduler_ptr(NULL), 
       consensus(dc, ncpus), max_pending_tasks(10000) {
       rmi.barrier();
       // TODO: Remove context creation.

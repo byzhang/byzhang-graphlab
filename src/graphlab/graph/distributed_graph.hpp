@@ -58,7 +58,9 @@
 #include <graphlab/graph/graph2.hpp>
 #include <graphlab/graph/idistributed_ingress.hpp>
 #include <graphlab/graph/distributed_batch_ingress.hpp>
+#include <graphlab/graph/distributed_batch_ingress2.hpp>
 #include <graphlab/graph/distributed_random_ingress.hpp>
+#include <sstream>
 
 
 
@@ -84,6 +86,7 @@ namespace graphlab {
 
 
     /// The type of the local graph used to store the graph data 
+    // typedef graphlab::graph<VertexData, EdgeData> local_graph_type;
     typedef graphlab::graph2<VertexData, EdgeData> local_graph_type;
 
     typedef idistributed_ingress<VertexData, EdgeData> 
@@ -96,6 +99,12 @@ namespace graphlab {
     typedef distributed_random_ingress<VertexData, EdgeData>
         distributed_random_ingress_type;
     friend class distributed_random_ingress<VertexData, EdgeData>;
+
+    typedef distributed_batch_ingress2<VertexData, EdgeData>
+        distributed_batch_ingress_type2;
+    friend class distributed_batch_ingress2<VertexData, EdgeData>;
+
+
 
 
     /** 
@@ -436,6 +445,27 @@ namespace graphlab {
       procid_t get_owner () const { return owner; }
       const std::vector<procid_t>& mirrors() const { return _mirrors; }
       size_t num_mirrors() const { return _mirrors.size(); }
+
+      void clear() {
+        _mirrors.clear();
+      }
+
+      void load(iarchive& arc) {
+        clear();
+        arc >> owner
+            >> gvid
+            >> num_in_edges
+            >> num_out_edges
+            >> _mirrors;
+      }
+
+      void save(oarchive& arc) const {
+        arc << owner
+            << gvid
+            << num_in_edges
+            << num_out_edges
+            << _mirrors;
+      } // end of save
     }; // end of vertex_record
 
 
@@ -451,13 +481,15 @@ namespace graphlab {
     /** The rpc interface for this class */
     mutable dc_dist_object<distributed_graph> rpc;
 
+    bool finalized;
+
     /** The local graph data */
     local_graph_type local_graph;
     
     /** The map from global vertex ids to vertex records */
     lvid2record_type lvid2record;
     
-    /** The map from local vertex ids back to global vertex ids */
+    /** The map from global vertex ids back to local vertex ids */
     boost::unordered_map<vertex_id_type, lvid_type> vid2lvid;
         
     /** The global number of vertices and edges */
@@ -480,7 +512,8 @@ namespace graphlab {
     // CONSTRUCTORS ==========================================================>
     distributed_graph(distributed_control& dc, 
                       const graphlab_options& opts = graphlab_options() ) : 
-      rpc(dc, this), nverts(0), nedges(0), local_own_nverts(0), nreplicas(0),
+      rpc(dc, this), finalized(false), nverts(0), 
+      nedges(0), local_own_nverts(0), nreplicas(0),
       ingress_ptr(NULL) {
       rpc.barrier();
       std::string ingress_method = "random";
@@ -498,6 +531,9 @@ namespace graphlab {
       if(method == "batch") {
         logstream(LOG_INFO) << "Using batch ingress" << std::endl;
         ingress_ptr = new distributed_batch_ingress_type(rpc.dc(), *this);
+      } else if (method == "batch2") {
+        logstream(LOG_INFO) << "Using batch2 ingress" << std::endl;
+        ingress_ptr = new distributed_batch_ingress_type2(rpc.dc(), *this);
       } else {
         logstream(LOG_INFO) << "Using random ingress" << std::endl;
         ingress_ptr = new distributed_random_ingress_type(rpc.dc(), *this);
@@ -510,9 +546,11 @@ namespace graphlab {
      * ownship and completing local data structures.
      */
     void finalize() {
-      if(ingress_ptr == NULL) return;
+      if (finalized) return;
+      ASSERT_NE(ingress_ptr, NULL);
       ingress_ptr->finalize();
       rpc.barrier(); delete ingress_ptr; ingress_ptr = NULL;
+      finalized = true;
     }
             
     /** \brief Get the number of vertices */
@@ -717,6 +755,74 @@ namespace graphlab {
 
     void resize (size_t n) { }
 
+    void clear () { 
+      foreach (vertex_record& vrec, lvid2record)
+        vrec.clear();
+      lvid2record.clear();
+      vid2lvid.clear();
+    }
+
+    /** \brief Load the graph from an archive */
+    void load(iarchive& arc) {
+      // read the vertices and colors
+      arc >> nverts 
+          >> nedges 
+          >> local_own_nverts 
+          >> nreplicas
+          >> begin_eid 
+          >> vid2lvid
+          >> lvid2record
+          >> local_graph;
+      finalized = true;
+      // check the graph condition
+    } // end of load
+
+
+    /** \brief Save the graph to an archive */
+    void save(oarchive& arc) const {
+      ASSERT_TRUE(finalized);
+      // Write the number of edges and vertices
+      arc << nverts 
+          << nedges 
+          << local_own_nverts 
+          << nreplicas 
+          << begin_eid
+          << vid2lvid
+          << lvid2record
+          << local_graph;
+    } // end of save
+
+    /** \brief Load part of the distributed graph from a path*/
+    void load(std::string& path, std::string& prefix) {
+      std::ostringstream ss;
+      ss << prefix << rpc.procid() << ".bin";
+      std::string fname = ss.str();
+
+      if (path.substr(path.length()-1, 1) != "/")
+        path.append("/");
+      fname = path.append(fname);
+
+      logstream(LOG_INFO) << "Load graph from " << fname << std::endl;
+      std::ifstream fin(fname.c_str());
+      iarchive iarc(fin);
+      iarc >> *this;
+      fin.close();
+    } // end of load
+
+    /** \brief Load part of the distributed graph from a path*/
+    void save(std::string& path, std::string& prefix="x") const {
+      std::ostringstream ss;
+      ss << prefix << rpc.procid() << ".bin";
+      std::string fname = ss.str();
+      if (path.substr(path.length()-1, 1) != "/")
+        path.append("/");
+      fname = path.append(fname);
+      logstream(LOG_INFO) << "Save graph to " << fname << std::endl;
+      std::ofstream fout(fname.c_str());
+      oarchive oarc(fout);
+      oarc << *this;
+      fout.close();
+    } // end of save
 
   }; // End of graph
 
