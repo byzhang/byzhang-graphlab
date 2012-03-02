@@ -177,9 +177,13 @@ namespace graphlab {
     atomic<size_t> threads_alive;
     std::vector<thread_local_data> thrlocal;
     
-    atomic<uint64_t> blocked_issues; // issued tasks which cannot start
-                                     // and have to be reinjected into the 
-                                     // scheduler
+    atomic<uint64_t> joined_tasks;
+    atomic<uint64_t> blocked_issues; // issued tasks which either
+                                     // 1: cannot start and have to be 
+                                     //    reinjected into the 
+                                     //    scheduler.
+                                     // 2: issued but is combined into a
+                                     //    task which is currently locking
     atomic<uint64_t> issued_tasks;
     atomic<uint64_t> completed_tasks;
     
@@ -272,7 +276,7 @@ namespace graphlab {
       // Added context to force compilation.   
       context_type context;
 
-      INITIALIZE_DIST_EVENT_LOG(eventlog, dc, std::cout, 500, dist_event_log::RATE_BAR);
+      INITIALIZE_DIST_EVENT_LOG(eventlog, dc, std::cout, 3000, dist_event_log::RATE_BAR);
       ADD_DIST_EVENT_TYPE(eventlog, SCHEDULE_EVENT, "Schedule");
       ADD_DIST_EVENT_TYPE(eventlog, UPDATE_EVENT, "Updates");
       ADD_DIST_EVENT_TYPE(eventlog, INTERNAL_TASK_EVENT, "Internal");
@@ -510,6 +514,7 @@ namespace graphlab {
       ASSERT_EQ(vstate[lvid].state, (int)LOCKING);
       vstate[lvid].state = GATHERING;
       update_functor_type uf = vstate[lvid].current;
+      do_init_gather(lvid);
       vstate_locks[lvid].unlock();
       master_broadcast_gathering(lvid, uf);
     }
@@ -582,21 +587,26 @@ namespace graphlab {
       END_TRACEPOINT(disteng_evalfac);
     }
     
-    
-    void do_gather(lvid_type lvid) { // Do gather
-      BEGIN_TRACEPOINT(disteng_evalfac);
+    void do_init_gather(lvid_type lvid) {
       update_functor_type& ufun = vstate[lvid].current;
       vertex_id_type vid = graph.global_vid(lvid);
       context_type context(this, &graph, vid, ufun.gather_consistency());
       ufun.init_gather(context);
+    }   
+ 
+    void do_gather(lvid_type lvid) { // Do gather
+      BEGIN_TRACEPOINT(disteng_evalfac);
+      update_functor_type& ufun = vstate[lvid].current;
+      const vertex_id_type vid = graph.global_vid(lvid);
+      context_type context(this, &graph, vid, ufun.gather_consistency());
       if(ufun.gather_edges() == graphlab::IN_EDGES || 
          ufun.gather_edges() == graphlab::ALL_EDGES) {
-        const local_edge_list_type edges = graph.l_in_edges(vid);
+        const local_edge_list_type edges = graph.l_in_edges(lvid);
         foreach(const edge_type& edge, edges) ufun.gather(context, edge);
       }
       if(ufun.gather_edges() == graphlab::OUT_EDGES ||
          ufun.gather_edges() == graphlab::ALL_EDGES) {
-        const local_edge_list_type edges = graph.l_out_edges(vid);
+        const local_edge_list_type edges = graph.l_out_edges(lvid);
         foreach(const edge_type& edge, edges) ufun.gather(context, edge);
       }
       END_TRACEPOINT(disteng_evalfac);
@@ -609,12 +619,12 @@ namespace graphlab {
       context_type context(this, &graph, vid, ufun.scatter_consistency());
       if(ufun.scatter_edges() == graphlab::IN_EDGES || 
          ufun.scatter_edges() == graphlab::ALL_EDGES) {
-        const local_edge_list_type edges = graph.l_in_edges(vid);
+        const local_edge_list_type edges = graph.l_in_edges(lvid);
         foreach(const edge_type& edge, edges) ufun.scatter(context, edge);
       }
       if(ufun.scatter_edges() == graphlab::OUT_EDGES ||
          ufun.scatter_edges() == graphlab::ALL_EDGES) {
-        const local_edge_list_type edges = graph.l_out_edges(vid);
+        const local_edge_list_type edges = graph.l_out_edges(lvid);
         foreach(const edge_type& edge, edges) ufun.scatter(context, edge);
       }
       END_TRACEPOINT(disteng_evalfac);
@@ -635,7 +645,6 @@ namespace graphlab {
         locked_gather_complete(lvid);
       } else {
         vstate[lvid].state = MIRROR_SCATTERING;
-        vstate[lvid].current = update_functor_type();
         logstream(LOG_DEBUG) << rmi.procid() << ": Send Gather Complete of " << vid  
                              << " to " << vowner << std::endl;
 
@@ -643,6 +652,8 @@ namespace graphlab {
                         &engine_type::rpc_gather_complete,
                         graph.global_vid(lvid),
                         vstate[lvid].current);
+
+        vstate[lvid].current = update_functor_type();
       }
     }
 
@@ -670,6 +681,7 @@ namespace graphlab {
       case MIRROR_GATHERING: {
           logstream(LOG_DEBUG) << rmi.procid() << ": Internal Task: " 
                               << graph.global_vid(lvid) << ": MIRROR_GATHERING" << std::endl;
+          do_init_gather(lvid);
           process_gather(lvid);
           break;
         }
@@ -699,8 +711,8 @@ namespace graphlab {
             schedule_local(lvid, vstate[lvid].next);
             vstate[lvid].hasnext = false;
           } 
-          vstate[lvid].current = update_functor_type();
           vstate[lvid].state = NONE;
+          vstate[lvid].current = update_functor_type();
           break;
         }
       case MIRROR_SCATTERING: {
@@ -708,6 +720,7 @@ namespace graphlab {
                               << graph.global_vid(lvid) << ": MIRROR_SCATTERING" << std::endl;
           do_scatter(lvid);
           vstate[lvid].state = NONE;
+          vstate[lvid].current = update_functor_type();
           cmlocks->philosopher_stops_eating_per_replica(lvid);
           ASSERT_FALSE(vstate[lvid].hasnext);
           break;
@@ -716,6 +729,7 @@ namespace graphlab {
           logstream(LOG_DEBUG) << rmi.procid() << ": Scattering: " 
                               << graph.global_vid(lvid) << ": MIRROR_SCATTERING_AND_LOCKING" << std::endl;
           do_scatter(lvid);
+          vstate[lvid].current = update_functor_type();
           vstate[lvid].state = LOCKING;
           ASSERT_FALSE(vstate[lvid].hasnext);          
           cmlocks->philosopher_stops_eating_per_replica(lvid);
@@ -822,9 +836,12 @@ namespace graphlab {
     void rpc_begin_scattering(vertex_id_type vid, update_functor_type task,
                               const vertex_data_type &central_vdata) {
       vertex_id_type lvid = graph.local_vid(vid);
+      vstate_locks[lvid].lock();
       ASSERT_I_AM_NOT_OWNER(lvid);
       ASSERT_EQ(vstate[lvid].state, MIRROR_SCATTERING);
       graph.get_local_graph().vertex_data(lvid) = central_vdata;
+      vstate[lvid].current = task;
+      vstate_locks[lvid].unlock();
       add_internal_task(lvid);
     }
     
@@ -887,10 +904,12 @@ namespace graphlab {
       } else if (vstate[sched_lvid].state == LOCKING) {
          blocked_issues.inc();
          vstate[sched_lvid].next += task;
+         joined_tasks.inc();
       } else {
         blocked_issues.inc();
         if (vstate[sched_lvid].hasnext) {
           vstate[sched_lvid].next += task;
+          joined_tasks.inc();
         } else {
           vstate[sched_lvid].hasnext = true;
           vstate[sched_lvid].next = task;
@@ -984,10 +1003,18 @@ namespace graphlab {
       ctasks = blocked_issues.value;
       rmi.all_reduce(ctasks);
       blocked_issues.value = ctasks;
+      
+      ctasks = joined_tasks.value;
+      ctasks += scheduler_ptr->num_joins();
+      rmi.all_reduce(ctasks);
+      joined_tasks.value = ctasks;
+      
       if (rmi.procid() == 0) {
         std::cout << "Completed Tasks: " << completed_tasks.value << std::endl;
         std::cout << "Issued Tasks: " << issued_tasks.value << std::endl;
         std::cout << "Blocked Issues: " << blocked_issues.value << std::endl;
+        std::cout << "------------------" << std::endl;
+        std::cout << "Joined Tasks: " << joined_tasks.value << std::endl;
       }
       // test if all schedulers are empty
       for (size_t i = 0;i < ncpus; ++i) {

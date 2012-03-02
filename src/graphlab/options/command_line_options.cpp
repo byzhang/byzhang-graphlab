@@ -65,7 +65,7 @@ namespace graphlab {
     std::string metricstype(get_metrics_type());
     std::string graph_opts_string= "";
 
-    if(!surpress_graphlab_options) {
+    if(!suppress_graphlab_options) {
       if (distributed_options == false) {
         // Set the program options
         desc.add_options()
@@ -121,6 +121,13 @@ namespace graphlab {
           ("schedhelp",
           boost_po::value<std::string>()->implicit_value(""),
           "Display help for a particular scheduler.")
+          ("scheduler",
+           boost_po::value<std::string>(&(schedulertype))->
+           default_value(schedulertype),
+           (std::string("Supported schedulers are: ")
+           + get_scheduler_names_str() +
+            ". Too see options for each scheduler, run the program with the option"
+            " ---schedhelp=[scheduler_name]").c_str())
           ("enghelp",
            boost_po::value<std::string>()->implicit_value(""),
            "Display help for a particular engine.");
