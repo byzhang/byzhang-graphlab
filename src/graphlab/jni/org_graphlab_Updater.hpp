@@ -36,7 +36,17 @@
 namespace graphlab {
 
   /** Proxy edge */
-  struct proxy_edge {};
+  class proxy_edge : public java_any {
+  public:
+    /**
+     * Creates a new proxy_edge and a new reference to the associated
+     * Java org.graphlab.Core object (so that it doesn't get garbage collected.)
+     * @param[in] env   JNI environment, which will be used to create the
+     *                  reference to the Java object.
+     * @param[in] obj   associated org.graphlab.Core object.
+     */
+    proxy_edge (JNIEnv *env, jobject &obj) : java_any (env, obj) {}
+  };
   
   /** Proxy vertex */
   struct proxy_vertex {
@@ -90,6 +100,9 @@ namespace graphlab {
     
     /** Method ID of org.graphlab.Updater#scatterEdges */
     static jmethodID java_scatter_edges;
+    
+    /** Method ID of org.graphlab.Updater#consistency */
+    static jmethodID java_consistency;
     
     /** Method ID of org.graphlab.Updater#gatherConsistency */
     static jmethodID java_gather_consistency;
@@ -150,6 +163,7 @@ namespace graphlab {
     bool is_factorizable() const;
     edge_set gather_edges() const;
     edge_set scatter_edges() const;
+    consistency_model consistency() const;
     consistency_model gather_consistency() const;
     consistency_model scatter_consistency() const;
     void init_gather(iglobal_context_type& context);
@@ -157,11 +171,6 @@ namespace graphlab {
     void merge(const update_functor_type& other);
     void apply(icontext_type& context);
     void scatter(icontext_type& context, const edge_type& edge);
-    
-    /**
-     * Initialize JNI method IDs
-     */
-    static void init(JNIEnv *env);
     
   };
   

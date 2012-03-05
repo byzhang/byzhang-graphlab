@@ -35,6 +35,7 @@ jmethodID proxy_updater::java_clone                   = 0;
 jmethodID proxy_updater::java_is_factorizable         = 0;
 jmethodID proxy_updater::java_gather_edges            = 0;
 jmethodID proxy_updater::java_scatter_edges           = 0;
+jmethodID proxy_updater::java_consistency             = 0;
 jmethodID proxy_updater::java_gather_consistency      = 0;
 jmethodID proxy_updater::java_scatter_consistency     = 0;
 jmethodID proxy_updater::java_init_gather             = 0;
@@ -43,85 +44,55 @@ jmethodID proxy_updater::java_merge                   = 0;
 jmethodID proxy_updater::java_apply                   = 0;
 jmethodID proxy_updater::java_scatter                 = 0;
 
-// initialize JNI method IDs
-void proxy_updater::init(JNIEnv *env){
+JNIEXPORT void JNICALL
+  Java_org_graphlab_Updater_initNative
+  (JNIEnv *env, jclass clazz){
 
-  jclass updater_class = env->FindClass("org/graphlab/Updater");
+  proxy_updater::java_update =
+    env->GetMethodID(clazz, "update", "(JLorg/graphlab/data/Vertex;)V");
 
-  // get the method ID for Updater#update, if we don't have it already
-  if (0 == java_update){
-    java_update =
-      env->GetMethodID(updater_class, "update", "(JLorg/graphlab/data/Vertex;)V");
-  }
-  
-  // get the method ID for Updater#add, if we don't have it already
-  if (0 == java_add){
-    java_add =
-      env->GetMethodID(updater_class, "add", "(Lorg/graphlab/Updater;)V");
-  }
-  
-  // get the method ID for Updater#priority, if we don't have it already
-  if (0 == java_priority){
-    java_priority = 
-      env->GetMethodID(updater_class, "priority", "()D");
-  }
-  
-  // get the method ID for Updater#clone, if we don't have it already
-  if (0 == java_clone){
-    java_clone = 
-      env->GetMethodID(updater_class, "clone", "()Lorg/graphlab/Updater;");
-  }
-  
-  if (0 == java_is_factorizable){
-    java_is_factorizable =
-      env->GetMethodID(updater_class, "isFactorizable", "()Z");
-  }
-  
-  if (0 == java_gather_edges){
-    java_gather_edges =
-      env->GetMethodID(updater_class, "gatherEdges", "()I");
-  }
-  
-  if (0 == java_scatter_edges){
-    java_scatter_edges =
-      env->GetMethodID(updater_class, "scatterEdges", "()I");
-  }
-  
-  if (0 == java_gather_consistency){
-    java_gather_consistency =
-      env->GetMethodID(updater_class, "gatherConsistency", "()I");
-  }
-  
-  if (0 == java_scatter_consistency){
-    java_scatter_consistency =
-      env->GetMethodID(updater_class, "scatterConsistency", "()I");
-  }
-  
-  if (0 == java_init_gather){
-    java_init_gather = 
-      env->GetMethodID(updater_class, "initGather", "()V");
-  }
-  
-  if (0 == java_gather){
-    java_gather =
-      env->GetMethodID(updater_class, "gather", "(Lorg/graphlab/data/Vertex;Lorg/graphlab/data/Vertex;)V");
-  }
-  
-  if (0 == java_merge){
-    java_merge = 
-      env->GetMethodID(updater_class, "merge", "(Lorg/graphlab/Updater;)V");
-  }
-  
-  if (0 == java_apply){
-    java_apply =
-      env->GetMethodID(updater_class, "apply", "(Lorg/graphlab/data/Vertex;)V");
-  }
-  
-  if (0 == java_scatter){
-    java_scatter = 
-      env->GetMethodID(updater_class, "scatter",
-      "(JLorg/graphlab/data/Vertex;Lorg/graphlab/data/Vertex;)V");
-  }
+  proxy_updater::java_add =
+    env->GetMethodID(clazz, "add", "(Lorg/graphlab/Updater;)V");
+
+  proxy_updater::java_priority = 
+    env->GetMethodID(clazz, "priority", "()D");
+
+  proxy_updater::java_clone = 
+    env->GetMethodID(clazz, "clone", "()Lorg/graphlab/Updater;");
+
+  proxy_updater::java_is_factorizable =
+    env->GetMethodID(clazz, "isFactorizable", "()Z");
+
+  proxy_updater::java_gather_edges =
+    env->GetMethodID(clazz, "gatherEdges", "()I");
+
+  proxy_updater::java_scatter_edges =
+    env->GetMethodID(clazz, "scatterEdges", "()I");
+
+  proxy_updater::java_consistency =
+    env->GetMethodID(clazz, "consistency", "()I");
+
+  proxy_updater::java_gather_consistency =
+    env->GetMethodID(clazz, "gatherConsistency", "()I");
+
+  proxy_updater::java_scatter_consistency =
+    env->GetMethodID(clazz, "scatterConsistency", "()I");
+
+  proxy_updater::java_init_gather = 
+    env->GetMethodID(clazz, "initGather", "()V");
+
+  proxy_updater::java_gather =
+    env->GetMethodID(clazz, "gather", "(Ljava/lang/Object;)V");
+
+  proxy_updater::java_merge = 
+    env->GetMethodID(clazz, "merge", "(Lorg/graphlab/Updater;)V");
+
+  proxy_updater::java_apply =
+    env->GetMethodID(clazz, "apply", "(Lorg/graphlab/data/Vertex;)V");
+
+  proxy_updater::java_scatter = 
+    env->GetMethodID(clazz, "scatter",
+    "(JLjava/lang/Object;)V");
   
 }
 
@@ -170,7 +141,7 @@ void proxy_updater::operator()(icontext_type& context){
   JNIEnv *env = core::get_jni_env();
   env->CallVoidMethod (obj(), java_update,
                        &context,
-                       context.vertex_data().app_vertex);
+                       context.const_vertex_data().app_vertex);
   handle_exception(env);
 
 }
@@ -219,6 +190,19 @@ edge_set proxy_updater::scatter_edges() const {
   }
 }
 
+consistency_model proxy_updater::consistency() const {
+  JNIEnv *env = core::get_jni_env();
+  int c = env->CallIntMethod(obj(), java_consistency);
+  handle_exception(env);
+  switch(c){
+    case 0:  return NULL_CONSISTENCY;
+    case 1:  return VERTEX_CONSISTENCY;
+    case 2:  return EDGE_CONSISTENCY;
+    case 3:  return FULL_CONSISTENCY;
+    default: return DEFAULT_CONSISTENCY;
+  }
+}
+
 consistency_model proxy_updater::gather_consistency() const {
   JNIEnv *env = core::get_jni_env();
   int c = env->CallIntMethod(obj(), java_gather_consistency);
@@ -253,9 +237,7 @@ void proxy_updater::init_gather(iglobal_context_type& context) {
 
 void proxy_updater::gather(icontext_type& context, const edge_type& edge){
   JNIEnv *env = core::get_jni_env();
-  env->CallVoidMethod(obj(), java_gather,
-    context.const_vertex_data(edge.source()).app_vertex,
-    context.const_vertex_data(edge.target()).app_vertex);
+  env->CallVoidMethod(obj(), java_gather, context.const_edge_data(edge).obj());
   handle_exception(env);
 }
  
@@ -274,8 +256,6 @@ void proxy_updater::apply(icontext_type& context){
 void proxy_updater::scatter(icontext_type& context, const edge_type& edge){
   JNIEnv *env = core::get_jni_env();
   env->CallVoidMethod(obj(), java_scatter,
-    &context,
-    context.const_vertex_data(edge.source()).app_vertex,
-    context.const_vertex_data(edge.target()).app_vertex);
+    &context, context.const_edge_data(edge).obj());
   handle_exception(env);
 }

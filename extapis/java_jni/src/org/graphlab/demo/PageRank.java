@@ -6,6 +6,7 @@ import java.util.Collection;
 import java.util.Collections;
 import java.util.Comparator;
 import java.util.List;
+import java.util.Scanner;
 
 import org.apache.log4j.BasicConfigurator;
 import org.apache.log4j.Level;
@@ -37,14 +38,14 @@ public class PageRank {
     
     initLogger();
     
+    ///////// DUMB VISUAL VM HACK ///////////
+    Scanner sc = new Scanner(System.in);
+    sc.next();
+    ///////// DUMB VISUAL VM HACK ///////////
+    
     // check arguments
-    if (!checkParams(args)) {
-      logger.trace("Exiting main method.");
-      return;
-    }
-
+    if (!checkParams(args)) return;
     String filename = args[0];
-    logger.info("Graph file: " + filename);
 
     // initialize graphlab core
     final Core core;
@@ -61,7 +62,7 @@ public class PageRank {
 
     // construct graph
     logger.trace("Constructing graph from " + filename + " ...");
-    final DefaultDirectedWeightedGraph<ScalarVertex, DefaultWeightedEdge> graph;
+    final DefaultDirectedWeightedGraph<PageRankVertex, DefaultWeightedEdge> graph;
     try {
       graph = constructGraph(filename);
     } catch (IOException e) {
@@ -92,7 +93,7 @@ public class PageRank {
   private static void initLogger(){
     BasicConfigurator.configure();
     Logger.getLogger(Core.class).setLevel(Level.INFO);
-    logger.setLevel(Level.INFO);
+    logger.setLevel(Level.ALL);
   }
   
   /**
@@ -116,25 +117,25 @@ public class PageRank {
 
   }
 
-  private static DefaultDirectedWeightedGraph<ScalarVertex, DefaultWeightedEdge>
+  private static DefaultDirectedWeightedGraph<PageRankVertex, DefaultWeightedEdge>
     constructGraph(String filename)
     throws IOException {
 
-    DefaultDirectedWeightedGraph<ScalarVertex, DefaultWeightedEdge> graph
-      = new DefaultDirectedWeightedGraph<ScalarVertex, DefaultWeightedEdge>(DefaultWeightedEdge.class);
-    GraphLoader.loadGraphFromTsvFile(graph, filename);
+    DefaultDirectedWeightedGraph<PageRankVertex, DefaultWeightedEdge> graph
+      = new DefaultDirectedWeightedGraph<PageRankVertex, DefaultWeightedEdge>(DefaultWeightedEdge.class);
+    GraphLoader.loadGraphFromTsvFile(graph, PageRankVertex.class, filename);
     normalize(graph); 
     
     return graph;
 
   }
   
-  private static void normalize(DefaultDirectedWeightedGraph<ScalarVertex, DefaultWeightedEdge> graph){
+  private static void normalize(DefaultDirectedWeightedGraph<PageRankVertex, DefaultWeightedEdge> graph){
     
-    for(ScalarVertex vertex : graph.vertexSet()) {
+    for(PageRankVertex vertex : graph.vertexSet()) {
       double sum = 0;
       Collection<DefaultWeightedEdge> outEdges = graph.outgoingEdgesOf(vertex);
-      // Sum up weight on out edges
+      // sum up weight on out edges
       for(DefaultWeightedEdge edge : outEdges){
         sum += graph.getEdgeWeight(edge);
       }
@@ -145,12 +146,12 @@ public class PageRank {
     
   }
   
-  private static void printResults (DirectedGraph<ScalarVertex, DefaultWeightedEdge> g){
+  private static void printResults (DirectedGraph<PageRankVertex, DefaultWeightedEdge> g){
       
     logger.info("----------------- Results -----------------");
     logger.info("ID : Rank");
     
-    Collection<ScalarVertex> vertices = g.vertexSet();
+    Collection<PageRankVertex> vertices = g.vertexSet();
     List<ScalarVertex> verticesList = new ArrayList<ScalarVertex>(vertices.size());
     for (ScalarVertex vertex : vertices){
       verticesList.add(vertex);
@@ -169,7 +170,7 @@ public class PageRank {
     
   }
 
-  private static class PageRankUpdater extends Updater<ScalarVertex> {
+  private static class PageRankUpdater extends Updater<PageRankVertex, DefaultWeightedEdge, PageRankUpdater> {
 
     /** Global reset probability */
     public static final double RESET_PROB = 0.15;
@@ -180,10 +181,10 @@ public class PageRank {
     /** Priority */
     private double mPriority;
     
-    private DefaultDirectedWeightedGraph<ScalarVertex, DefaultWeightedEdge> mGraph;
+    private DefaultDirectedWeightedGraph<PageRankVertex, DefaultWeightedEdge> mGraph;
 
     public PageRankUpdater(
-        DefaultDirectedWeightedGraph<ScalarVertex, DefaultWeightedEdge> graph,
+        DefaultDirectedWeightedGraph<PageRankVertex, DefaultWeightedEdge> graph,
         double priority) {
       if (null == graph) throw new NullPointerException ("graph must not be null.");
       mGraph = graph;
@@ -191,9 +192,11 @@ public class PageRank {
     }
 
     @Override
-    public void update(Context context, ScalarVertex vertex) {
+    public void update(Context context, PageRankVertex vertex) {
       
-      // Compute weighted sum of neighbors
+      vertex.mNUpdates++;
+      
+      // compute weighted sum of neighbors
       double sum = 0;
       
       /* Iterate over edge_id_list and get source is slow in graph2 */
@@ -202,18 +205,16 @@ public class PageRank {
         sum += weight * mGraph.getEdgeSource(edge).value();
       }
       
-      // Add random reset probability
-      double oldValue = vertex.value();
+      // add random reset probability
+      vertex.mOldValue = vertex.value();
       vertex.setValue(RESET_PROB + (1-RESET_PROB)*sum);
       for(DefaultWeightedEdge edge : mGraph.outgoingEdgesOf(vertex)) {    
         double weight = mGraph.getEdgeWeight(edge);
-        double residual = weight * Math.abs(vertex.value() - oldValue);
-        // If the neighbor changed sufficiently add to scheduler.
+        double residual = weight * Math.abs(vertex.value() - vertex.mOldValue);
+        // if the neighbor changed sufficiently add to scheduler.
         if(residual > ACCURACY) 
-          context.schedule(
-              mGraph.getEdgeTarget(edge),
-              new PageRankUpdater(mGraph, residual)
-          );
+          context.schedule(mGraph.getEdgeTarget(edge),
+              new PageRankUpdater(mGraph, residual));
       }
 
     }
@@ -224,14 +225,12 @@ public class PageRank {
     }
     
     @Override
-    public void add(Updater<ScalarVertex> other){
-      if (!(other instanceof PageRankUpdater))
-        throw new IllegalStateException("incompatible updaters added.");
-      mPriority += ((PageRankUpdater) other).priority();
+    public void add(PageRankUpdater other){
+      mPriority += other.priority();
     }
 
     @Override
-    protected Updater<ScalarVertex> clone() {
+    protected PageRankUpdater clone() {
       return new PageRankUpdater(mGraph, mPriority);
     }
 
