@@ -1,5 +1,5 @@
-/**  
- * Copyright (c) 2009 Carnegie Mellon University. 
+/**
+ * Copyright (c) 2009 Carnegie Mellon University.
  *     All rights reserved.
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
@@ -59,7 +59,7 @@ namespace graphlab {
    /** \ingroup group_schedulers
     */
   template<typename Graph>
-  class splash_scheduler : 
+  class splash_scheduler :
     public ischeduler<Graph> {
   public:
     typedef Graph graph_type;
@@ -80,19 +80,19 @@ namespace graphlab {
     static const size_t queue_multiple = 5;
 
     // Typedefs --------------------------------------------------------------->
-    
+
     /** the type of a splash which is just a vector of updates */
     typedef std::vector<vertex_id_type> splash_type;
-    
+
     /** The type of the priority queue */
     typedef mutable_queue<size_t, double> pqueue_type;
-        
+
   public:
-    
+
     // Constructors / Destructors -------------------------------------------->
     splash_scheduler(iengine_type* engine,
-                     Graph& graph, 
-                     size_t ncpus) :     
+                     Graph& graph,
+                     size_t ncpus) :
       graph(graph),
       ncpus(ncpus),
       splash_size(100),
@@ -100,13 +100,13 @@ namespace graphlab {
       pqueues(ncpus * queue_multiple),
       queuelocks(ncpus * queue_multiple),
       vmap(graph.num_vertices()),
-      splashes(ncpus), 
+      splashes(ncpus),
       splash_index(ncpus, 0),
       active_set(graph.num_vertices()),
       terminator(ncpus),
       callbacks(ncpus, direct_callback<Graph>(this, engine) ) {
       aborted = false;
-      // Initialize the vertex map      
+      // Initialize the vertex map
       for(vertex_id_type i = 0; i < vmap.size(); ++i) {
         vmap[i] = (vertex_id_type)(i % pqueues.size());
       }
@@ -114,7 +114,7 @@ namespace graphlab {
       // std::random_shuffle(vmap.begin(), vmap.end());
     } // end of constructor
 
-   
+
     // Method ---------------------------------------------------------------->
 
     /** Called right before starting the engine */
@@ -122,12 +122,12 @@ namespace graphlab {
       // Initialize the splashes
       for(size_t i = 0; i < ncpus; ++i)  rebuild_splash(i);
     }
-    
+
     //! Adds an update task with a particular priority
     void add_task(update_task_type task, double priority) {
       //assert(task.function() == update_fun);
       if (update_fun == NULL) update_fun = task.function();
-      assert(task.vertex() < graph.num_vertices());      
+      assert(task.vertex() < graph.num_vertices());
       vertex_id_type vertex = task.vertex();
       // Get the priority queue for the vertex
       size_t pqueue_id = vmap[vertex];
@@ -140,7 +140,7 @@ namespace graphlab {
       // vertex was present and still not in a splash (in the priority
       // queue) insert/promote it.
       if(!already_present ||
-         pqueues[pqueue_id].contains(vertex)) {        
+         pqueues[pqueue_id].contains(vertex)) {
         // Insert/Promote the priority
         pqueues[pqueue_id].insert_max(vertex, priority);
         if (monitor != NULL)
@@ -154,23 +154,23 @@ namespace graphlab {
       terminator.new_job(cpuid);
     }
 
-    
-    void add_tasks(const std::vector<vertex_id_type>& vertices, 
-                   update_function_type func, double priority) {     
+
+    void add_tasks(const std::vector<vertex_id_type>& vertices,
+                   update_function_type func, double priority) {
       foreach(vertex_id_type vertex, vertices) {
         add_task(update_task_type(vertex, func), priority);
       }
     }
 
-    
+
     void add_task_to_all(update_function_type func, double priority) {
       if (update_fun == NULL) update_fun = func;
-      for (vertex_id_type vertex = 0; vertex < graph.num_vertices(); 
+      for (vertex_id_type vertex = 0; vertex < graph.num_vertices();
            ++vertex){
         add_task(update_task_type(vertex, func), priority);
       }
     }
-    
+
     callback_type& get_callback(size_t cpuid) {
       assert(cpuid < callbacks.size());
       return callbacks[cpuid];
@@ -179,8 +179,8 @@ namespace graphlab {
     void completed_task(size_t cpuid, const update_task_type &task) { }
 
 
-    
-    void set_update_function(update_function_type fun) { update_fun = fun; }    
+
+    void set_update_function(update_function_type fun) { update_fun = fun; }
     void set_splash_size(size_t size) { splash_size = size; }
 
     sched_status::status_enum get_next_task(size_t cpuid, update_task_type &ret_task){
@@ -192,25 +192,25 @@ namespace graphlab {
         if((splash_index[cpuid] >= splashes[cpuid].size()) ) {
           rebuild_splash(cpuid);
         }
-        
+
         // If we were unable to build a splash return waiting
         if(splash_index[cpuid] >= splashes[cpuid].size()) return sched_status::EMPTY;
-        
+
         // Otherwise loop until we obtian a vertex that is still
         // schedulable (in the active set) or we run out of vertices
-        while(splash_index[cpuid] < splashes[cpuid].size()) {        
+        while(splash_index[cpuid] < splashes[cpuid].size()) {
           vertex_id_type vertex =  splashes[cpuid][ splash_index[cpuid]++ ];
-          // Clear the bit from the active set.  If the bit was        
+          // Clear the bit from the active set.  If the bit was
           // previously set then we have succeeded and return the
           // new_task
           queuelocks[vmap[vertex]].lock();
           pqueues[vmap[vertex]].remove(vertex);
           queuelocks[vmap[vertex]].unlock();
-          
-          if( active_set.clear_bit(vertex) ) {            
+
+          if( active_set.clear_bit(vertex) ) {
             ret_task = update_task_type(vertex, update_fun);
             if (monitor != NULL)
-              monitor->scheduler_task_scheduled(ret_task, 1.0);            
+              monitor->scheduler_task_scheduled(ret_task, 1.0);
             return sched_status::NEWTASK;
           }
         }
@@ -234,15 +234,15 @@ namespace graphlab {
       out << "update_function = [update_function_type,"
                                  "default = set on add_task_to_all]\n";
     };
-    
+
   private:
 
-    bool get_top(size_t cpuid, 
+    bool get_top(size_t cpuid,
                  vertex_id_type& ret_vertex, double& ret_priority) {
       // starting at queue cpuid and running to the queue at index
       // cpuid + queue_multiple
       static size_t lastqid[128] = {0};
-      
+
       for(size_t i = 0; i < queue_multiple; ++i) {
         size_t j = (i + lastqid[cpuid]) % queue_multiple;
         size_t index = cpuid * queue_multiple + j;
@@ -262,9 +262,9 @@ namespace graphlab {
       lastqid[cpuid] = 0;
       return false;
     }
-      
+
     void rebuild_splash(size_t cpuid) {
-      assert(cpuid < splashes.size());    
+      assert(cpuid < splashes.size());
       // Get a reference to the splash order for this processor
       splash_type& splash(splashes[cpuid]);
       // Ensure that the existing splash is depleted
@@ -274,18 +274,18 @@ namespace graphlab {
       splash_index[cpuid] = 0;
       // See if we can get a root
       vertex_id_type root(-1);
-      double root_priority(0);        
+      double root_priority(0);
       // Try and get a root
       bool root_found = get_top(cpuid, root, root_priority);
       // if a root was not found return
       if(!root_found) return;
-      
-      
+
+
       // Otherwise grow a splash starting at the root Splash growing
       // procedure
       // ----------------------------------------------->
-      
-      // We immideatly add the root to the splash updating the work 
+
+      // We immideatly add the root to the splash updating the work
       splash.push_back(root);
       size_t splash_work = work(root);
       if (root_priority > 1) splash_work = splash_size;
@@ -293,15 +293,15 @@ namespace graphlab {
       // queue
       std::set<vertex_id_type>    visited;
       std::queue<vertex_id_type>  bfs_queue;
-      
+
       // Mark the root as visited
       visited.insert(root);
-      
+
       // Add the roots neighbors to the BFS queue and mark them as
       // visited
       // The edges that are shuffled each round
-      std::vector<edge_id_type> shuffled_edges;
-      graph.in_edge_ids(root).fill_vector(shuffled_edges);
+      auto in_edges = graph.in_edge_ids(root);
+      std::vector<edge_id_type> shuffled_edges(in_edges.begin(), in_edges.end());
       random::shuffle(shuffled_edges.begin(), shuffled_edges.end());
       foreach(edge_id_type ineid, shuffled_edges) {
         vertex_id_type neighbor = graph.source(ineid);
@@ -309,13 +309,13 @@ namespace graphlab {
         visited.insert( neighbor );
       }
 
-    
-      
+
+
       // Fill out the splash looping until the quota is achieved or
       // the tree becomes disconnected
       while( splash_work < splash_size  && !bfs_queue.empty() ) {
         // Get the top of the queue
-        vertex_id_type vertex = bfs_queue.front(); bfs_queue.pop();      
+        vertex_id_type vertex = bfs_queue.front(); bfs_queue.pop();
         // Compute the work associated with the vertex
         size_t vertex_work = work(vertex);
         // If the vertex is too heavy then go to the next vertex
@@ -325,12 +325,13 @@ namespace graphlab {
         bool success = pqueues[vmap[vertex]].remove(vertex);
         queuelocks[vmap[vertex]].unlock();
         // If the vertex was not in the queue then return
-        if(!success) continue;                 
+        if(!success) continue;
         // Otherwise we can add the vertex to the splash and update
         // the work
         splash.push_back(vertex);
         splash_work += vertex_work;
-        graph.in_edge_ids(vertex).fill_vector(shuffled_edges);
+        auto in_edges = graph.in_edge_ids(vertex);
+        shuffled_edges.assign(in_edges.begin(), in_edges.end());
         random::shuffle(shuffled_edges.begin(), shuffled_edges.end());
         foreach(edge_id_type eid, shuffled_edges) {
           vertex_id_type neighbor = graph.source(eid);
@@ -339,10 +340,10 @@ namespace graphlab {
           if(visited.count(neighbor) == 0) {
             visited.insert(neighbor);
             bfs_queue.push(neighbor);
-          }        
+          }
         } // end of if < splash size
-      } // end of while loop   
-      
+      } // end of while loop
+
       // Support reverse splashes ----------------------------------------------->
       size_t original_size = splash.size();
       if(original_size > 1) {
@@ -352,22 +353,22 @@ namespace graphlab {
         for(size_t i = 0; i < original_size - 1; i++) {
           splash.at(splash.size() - 1 - i) = splash.at(i);
         }
-      } // end of if           
+      } // end of if
     } // end of rebuild splash
 
-    
+
     //! Compute an estimate of the work associated with the vertex v
     size_t work(const vertex_id_type &v) const {
       return graph.in_edge_ids(v).size() + graph.out_edge_ids(v).size();
     }
 
-    
 
-    
 
-    
+
+
+
     // Data Members ----------------------------------------------------------->
-    
+
     Graph& graph;
 
     size_t ncpus;
@@ -382,16 +383,16 @@ namespace graphlab {
     std::vector< mutex >    queuelocks;
     //! The vertex max which maps each vertex to one of the queue
     std::vector<vertex_id_type>       vmap;
-    
+
     //! The active splashes
-    std::vector< splash_type > splashes;    
+    std::vector< splash_type > splashes;
     //! The index of each splash
     std::vector< size_t > splash_index;
 
     //! Vertex task set used to track tasks that are currently active
-    dense_bitset active_set;    
+    dense_bitset active_set;
 
-    //! Termination assessment object 
+    //! Termination assessment object
     terminator_type terminator;
     // optimal_termination terminator;
 
@@ -400,7 +401,7 @@ namespace graphlab {
     std::vector<direct_callback<Graph> > callbacks;
 
     bool aborted;
-    
+
   }; // End of splash scheduler
 
 }; // end of graphlab namespace
