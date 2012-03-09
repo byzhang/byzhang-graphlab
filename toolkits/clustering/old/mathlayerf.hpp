@@ -1,5 +1,5 @@
-/**  
- * Copyright (c) 2009 Carnegie Mellon University. 
+/**
+ * Copyright (c) 2009 Carnegie Mellon University.
  *     All rights reserved.
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
@@ -17,7 +17,7 @@
  * For more about this software visit:
  *
  *      http://www.graphlab.ml.cmu.edu
- *  
+ *
  *  Code written by Danny Bickson, CMU
  */
 
@@ -62,17 +62,17 @@ inline void sort(fvec & a){
    std::sort(a.data(), a.data()+a.size());
 }
 inline ivec sort_index(const fvec &a){
-  ivec ret(a.size()); 
+  ivec ret(a.size());
   std::vector<std::pair<float,int> > D;
-  // 	
+  //
   D.reserve(a.size());
   for (int i=0;i<a.size();i++)
-    D.push_back(std::make_pair<float,int>(a.coeff(i),i));
+    D.push_back(std::make_pair(a.coeff(i),i));
   std::sort(D.begin(),D.end());
   for (int i=0;i<a.size();i++)
-  { 
+  {
     ret[i]=D[i].second;
-  } 
+  }
   return ret;
 }
 
@@ -150,7 +150,7 @@ inline bool chol(fmat& sigma, fmat& out){
 inline bool backslash(const fmat& A, const fvec & b, fvec & x){
    x = A.jacobiSvd(ComputeThinU | ComputeThinV).solve(b);
    return true;
-} 
+}
 inline fmat transpose(fmat & A){
    return A.transpose();
 }
@@ -286,7 +286,7 @@ inline void set_size(sparse_fvec &v, int size){
 }
 inline void set_new(sparse_fvec&v, int ind, float val){
   v.insert(ind) = val;
-} 
+}
 inline int nnz(sparse_fvec& v){
   return v.nonZeros();
 }
@@ -362,7 +362,7 @@ inline float get_val(sparse_fvec & v1, int i){ //TODO optimize performance
        return it.value();
 
   return 0;
-} 
+}
 inline float get_val(fvec & v1, int i){
   return v1(i);
 }
@@ -381,7 +381,7 @@ inline void plus( fvec &v1,  sparse_fvec &v2){
    }
 }
 inline void plus_mul( fvec &v1,  sparse_fvec &v2, float factor){
-  FOR_ITERATOR2(i, v2){  
+  FOR_ITERATOR2(i, v2){
     v1[get_nz_index(v2, i)] += factor*get_nz_data(v2, i);
   }
 }
@@ -395,8 +395,8 @@ inline void minus( fvec &v1, sparse_fvec &v2){
 inline sparse_fvec fabs( sparse_fvec & dvec1){
    sparse_fvec ret = dvec1;
    FOR_ITERATOR2(i, ret){
-      ret.coeffRef(i.index()) = fabs(i.value()); 
-   }	
+      ret.coeffRef(i.index()) = fabs(i.value());
+   }
    return ret;
 };
 
@@ -404,7 +404,7 @@ inline fvec fabs( const fvec & dvec1){
    fvec ret(dvec1.size());
    for (int i=0; i< dvec1.size(); i++){
       ret(i) = fabs(dvec1(i));
-   }	
+   }
    return ret;
 };
 inline float abs_sum(const fmat& A){
@@ -555,7 +555,7 @@ inline void set_size(sparse_fvec &v, int size){
 }
 inline void set_new(sparse_fvec&v, int ind, float val){
   v.set_new(ind, val);
-} 
+}
 inline int get_nz_index(sparse_fvec &v, int i){
   return v.get_nz_index(i);
 }
@@ -586,7 +586,7 @@ inline void set_div(sparse_fvec&v, int i, float val){
   v.set(v.get_nz_index(i) ,v.get_nz_data(i) / val);
 }
 inline sparse_fvec minus(sparse_fvec &v1,sparse_fvec &v2){
-/*  sparse_fvec ret; 
+/*  sparse_fvec ret;
   for (int i=0; i< v1.nnz(); i++){
       ret.set_new(v1.get_nz_index(i), v1.get_nz_data(i) - get_val(v2, v1.get_nz_index(i)));
   }
@@ -598,18 +598,18 @@ inline sparse_fvec minus(sparse_fvec &v1,sparse_fvec &v2){
 }
 inline fvec minus( sparse_fvec &v1,  fvec &v2){
   fvec ret = -v2;;
-  FOR_ITERATOR(i, v1){  
+  FOR_ITERATOR(i, v1){
     ret.set(v1.get_nz_index(i), ret.get(v1.get_nz_index(i)) + v1.get_nz_data(i));
   }
   return ret;
 }
 inline void plus( fvec &v1,  sparse_fvec &v2){
-  FOR_ITERATOR(i, v2){ 
+  FOR_ITERATOR(i, v2){
      v1[get_nz_index(v2, i)] += get_nz_data(v2, i);
   }
 }
 inline void minus( fvec &v1, sparse_fvec &v2){
-  FOR_ITERATOR(i, v2){ 
+  FOR_ITERATOR(i, v2){
      v1[get_nz_index(v2, i)] -= get_nz_data(v2, i);
   }
 }
@@ -619,7 +619,7 @@ inline sparse_fvec fabs( sparse_fvec & dvec1){
        set_new(ret,get_nz_index(dvec1, i), fabs(get_nz_data(dvec1, i)));
    }
    return ret;
-	
+
 };
 
 inline fvec fabs(const fvec & a){
@@ -716,7 +716,7 @@ inline float get(sparse_fvec & v1, int pos){
   return 0;
 }
 inline float min( sparse_fvec & dvec){
- 
+
   float dmin = 1e100;
   FOR_ITERATOR(i, dvec){
      dmin = std::min(dmin, get_nz_data(dvec, i));
@@ -725,7 +725,7 @@ inline float min( sparse_fvec & dvec){
 }
 
 inline float max( sparse_fvec & dvec){
- 
+
   float dmax = -1e100;
   FOR_ITERATOR(i, dvec){
      dmax = std::max(dmax, get_nz_data(dvec, i));
@@ -733,7 +733,7 @@ inline float max( sparse_fvec & dvec){
   return dmax;
 }
 inline void plus_mul( fvec &v1,  sparse_fvec &v2, float factor){
-  FOR_ITERATOR(i, v2){  
+  FOR_ITERATOR(i, v2){
     v1[get_nz_index(v2, i)] += factor*get_nz_data(v2, i);
   }
 }

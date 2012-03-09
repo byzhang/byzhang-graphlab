@@ -1,5 +1,5 @@
-/**  
- * Copyright (c) 2009 Carnegie Mellon University. 
+/**
+ * Copyright (c) 2009 Carnegie Mellon University.
  *     All rights reserved.
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
@@ -30,7 +30,7 @@
 #include <sstream>
 
 namespace graphlab {
-  
+
 std::string get_local_ip_as_str() {
   std::stringstream strm;
   // code adapted from
@@ -39,7 +39,7 @@ std::string get_local_ip_as_str() {
   struct ifaddrs * firstifaddr = ifAddrStruct;
   ASSERT_NE(ifAddrStruct, NULL);
   while (ifAddrStruct != NULL) {
-    if (ifAddrStruct->ifa_addr != NULL && 
+    if (ifAddrStruct->ifa_addr != NULL &&
         ifAddrStruct->ifa_addr->sa_family == AF_INET) {
       char* tmpAddrPtr = NULL;
       // check it is IP4 and not lo0.
@@ -68,7 +68,7 @@ uint32_t get_local_ip() {
   struct ifaddrs * firstifaddr = ifAddrStruct;
   ASSERT_NE(ifAddrStruct, NULL);
   while (ifAddrStruct != NULL) {
-    if (ifAddrStruct->ifa_addr != NULL && 
+    if (ifAddrStruct->ifa_addr != NULL &&
         ifAddrStruct->ifa_addr->sa_family == AF_INET) {
       char* tmpAddrPtr = NULL;
       // check it is IP4 and not lo0.
@@ -105,7 +105,7 @@ std::pair<size_t, int> get_free_tcp_port() {
     logger(LOG_FATAL, "Failed to get port information about bound socket");
   }
   size_t freeport = ntohs(((sockaddr_in*)(&addr))->sin_port);
-  return std::make_pair<size_t, int>(freeport, sock);
+  return std::make_pair(freeport, sock);
 }
 
 } // namespace graphlab

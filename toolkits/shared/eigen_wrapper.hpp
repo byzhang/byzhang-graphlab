@@ -1,5 +1,5 @@
-/**  
- * Copyright (c) 2009 Carnegie Mellon University. 
+/**
+ * Copyright (c) 2009 Carnegie Mellon University.
  *     All rights reserved.
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
@@ -175,17 +175,17 @@ inline void sort(vec & a){
    std::sort(a.data(), a.data()+a.size());
 }
 inline ivec sort_index(const vec&a){
-  ivec ret(a.size()); 
+  ivec ret(a.size());
   std::vector<std::pair<double,int> > D;
-  // 	
+  //
   D.reserve(a.size());
   for (int i=0;i<a.size();i++)
-    D.push_back(std::make_pair<double,int>(a.coeff(i),i));
+    D.push_back(std::make_pair(a.coeff(i),i));
   std::sort(D.begin(),D.end());
   for (int i=0;i<a.size();i++)
-  { 
+  {
     ret[i]=D[i].second;
-  } 
+  }
   return ret;
 }
 inline void dot2(const vec&  x1, const vec& x3, mat & Q, int j, int len){
@@ -211,7 +211,7 @@ inline bool chol(mat& sigma, mat& out){
 inline bool backslash(const mat& A, const vec & b, vec & x){
    x = A.jacobiSvd(ComputeThinU | ComputeThinV).solve(b);
    return true;
-} 
+}
 inline mat transpose(mat & A){
    return A.transpose();
 }
@@ -248,14 +248,14 @@ inline bool eig_sym(const mat & T, vec & eigenvalues, mat & eigenvectors){
    //Column  of the returned matrix is an eigenvector corresponding to eigenvalue number  as returned by eigenvalues(). The eigenvectors are normalized to have (Euclidean) norm equal to one.
    SelfAdjointEigenSolver<mat> solver(T);
    eigenvectors = solver.eigenvectors();
-   eigenvalues = solver.eigenvalues(); 
+   eigenvalues = solver.eigenvalues();
    ivec index = sort_index(eigenvalues);
    sort(eigenvalues);
    vec eigenvalues2 = eigenvalues.reverse();
    mat T2 = zeros(eigenvectors.rows(), eigenvectors.cols());
    for (int i=0; i< eigenvectors.cols(); i++){
       set_col(T2, index[i], get_col(eigenvectors, i));
-   }   
+   }
    eigenvectors = T2;
    eigenvalues = eigenvalues2;
    return true;
@@ -294,13 +294,13 @@ inline ivec randi(int size, int from, int to){
 inline int randi(int from, int to){
   return internal::random<int>(from,to);
 }
-inline ivec concat(const ivec&a, const ivec&b){ 
+inline ivec concat(const ivec&a, const ivec&b){
    ivec ret(a.size()+b.size());
    ret << a,b;
    return ret;
 }
 inline void del(ivec&a, int i){
-   memcpy(a.data()+i, a.data() + i+1, (a.size() - i - 1)*sizeof(int)); 
+   memcpy(a.data()+i, a.data() + i+1, (a.size() - i - 1)*sizeof(int));
    a.conservativeResize(a.size() - 1); //resize without deleting values!
 }
 inline mat get_cols(const mat&A, ivec & cols){
@@ -355,13 +355,13 @@ public:
   else {
      fb.open(name, std::fstream::in);
   }
-   
+
    if (!fb.is_open()){
      perror("Failed opening file ");
      printf("filename is: %s\n", name);
      assert(false);
    }
-  
+
   };
   std::fstream & operator<<(const std::string str){
    int size = str.size();
@@ -404,7 +404,7 @@ public:
        perror("Failed reading file");
        assert(false);
     }
-     
+
     char buf[256];
     fb.read(buf, std::min(256,size));
     assert(!fb.fail());
@@ -460,7 +460,7 @@ inline void set_size(sparse_vec &v, int size){
 }
 inline void set_new(sparse_vec&v, int ind, double val){
   v.insert(ind) = val;
-} 
+}
 inline int nnz(sparse_vec& v){
   return v.nonZeros();
 }
@@ -546,7 +546,7 @@ inline double get_val(sparse_vec & v1, int i){ //TODO optimize performance
        return it.value();
 
   return 0;
-} 
+}
 inline double get_val(vec & v1, int i){
   return v1(i);
 }
@@ -572,8 +572,8 @@ inline void minus( vec &v1, sparse_vec &v2){
 inline sparse_vec fabs( sparse_vec & dvec1){
    sparse_vec ret = dvec1;
    FOR_ITERATOR(i, ret){
-      ret.coeffRef(i.index()) = fabs(i.value()); 
-   }	
+      ret.coeffRef(i.index()) = fabs(i.value());
+   }
    return ret;
 };
 
@@ -581,7 +581,7 @@ inline vec fabs( const vec & dvec1){
    vec ret(dvec1.size());
    for (int i=0; i< dvec1.size(); i++){
       ret(i) = fabs(dvec1(i));
-   }	
+   }
    return ret;
 };
 inline double abs_sum(const mat& A){
@@ -615,6 +615,6 @@ inline void svd(const mat & A, mat & U, mat & V, vec & singular_values){
         Eigen::JacobiSVD<mat> svdEigen(A, Eigen::ComputeFullU | Eigen::ComputeFullV);
         U= svdEigen.matrixU();
         V= svdEigen.matrixV();
-	singular_values =svdEigen.singularValues(); 
+	singular_values =svdEigen.singularValues();
 }
 #endif

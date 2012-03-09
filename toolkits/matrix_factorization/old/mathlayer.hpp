@@ -1,5 +1,5 @@
-/**  
- * Copyright (c) 2009 Carnegie Mellon University. 
+/**
+ * Copyright (c) 2009 Carnegie Mellon University.
  *     All rights reserved.
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
@@ -17,7 +17,7 @@
  * For more about this software visit:
  *
  *      http://www.graphlab.ml.cmu.edu
- *  
+ *
  *  Code written by Danny Bickson, CMU
  */
 
@@ -101,7 +101,7 @@ inline bool chol(mat& sigma, mat& out){
 inline bool backslash(const mat& A, const vec & b, vec & x){
    x = A.jacobiSvd(ComputeThinU | ComputeThinV).solve(b);
    return true;
-} 
+}
 inline mat transpose(mat & A){
    return A.transpose();
 }
@@ -184,17 +184,17 @@ inline void sort(vec & a){
    std::sort(a.data(), a.data()+a.size());
 }
 inline ivec sort_index(const vec&a){
-  ivec ret(a.size()); 
+  ivec ret(a.size());
   std::vector<std::pair<double,int> > D;
-  // 	
+  //
   D.reserve(a.size());
   for (int i=0;i<a.size();i++)
-    D.push_back(std::make_pair<double,int>(a.coeff(i),i));
+    D.push_back(std::make_pair(a.coeff(i),i));
   std::sort(D.begin(),D.end());
   for (int i=0;i<a.size();i++)
-  { 
+  {
     ret[i]=D[i].second;
-  } 
+  }
   return ret;
 }
 
@@ -204,14 +204,14 @@ inline bool eig_sym(const mat & T, vec & eigenvalues, mat & eigenvectors){
    //Column  of the returned matrix is an eigenvector corresponding to eigenvalue number  as returned by eigenvalues(). The eigenvectors are normalized to have (Euclidean) norm equal to one.
    SelfAdjointEigenSolver<mat> solver(T);
    eigenvectors = solver.eigenvectors();
-   eigenvalues = solver.eigenvalues(); 
+   eigenvalues = solver.eigenvalues();
    ivec index = sort_index(eigenvalues);
    sort(eigenvalues);
    vec eigenvalues2 = eigenvalues.reverse();
    mat T2 = zeros(eigenvectors.rows(), eigenvectors.cols());
    for (int i=0; i< eigenvectors.cols(); i++){
       set_col(T2, index[i], get_col(eigenvectors, i));
-   }   
+   }
    eigenvectors = T2;
    eigenvalues = eigenvalues2;
    return true;
@@ -272,13 +272,13 @@ inline ivec randi(int size, int from, int to){
 inline int randi(int from, int to){
   return internal::random<int>(from,to);
 }
-inline ivec concat(const ivec&a, const ivec&b){ 
+inline ivec concat(const ivec&a, const ivec&b){
    ivec ret(a.size()+b.size());
    ret << a,b;
    return ret;
 }
 inline void del(ivec&a, int i){
-   memcpy(a.data()+i, a.data() + i+1, (a.size() - i - 1)*sizeof(int)); 
+   memcpy(a.data()+i, a.data() + i+1, (a.size() - i - 1)*sizeof(int));
    a.conservativeResize(a.size() - 1); //resize without deleting values!
 }
 inline mat get_cols(const mat&A, ivec & cols){
@@ -321,13 +321,13 @@ public:
   else {
      fb.open(name, std::fstream::in);
   }
-   
+
    if (!fb.is_open()){
      perror("Failed opening file ");
      printf("filename is: %s\n", name);
      assert(false);
    }
-  
+
   };
   std::fstream & operator<<(const std::string str){
    int size = str.size();
@@ -366,7 +366,7 @@ public:
        perror("Failed reading file");
        assert(false);
     }
-     
+
     char buf[256];
     fb.read(buf, std::min(256,size));
     assert(!fb.fail());
@@ -418,7 +418,7 @@ inline void set_size(sparse_vec &v, int size){
 }
 inline void set_new(sparse_vec&v, int ind, double val){
   v.insert(ind) = val;
-} 
+}
 inline int nnz(sparse_vec& v){
   return v.nonZeros();
 }
@@ -495,7 +495,7 @@ inline double get_val(sparse_vec & v1, int i){ //TODO optimize performance
        return it.value();
 
   return 0;
-} 
+}
 inline double get_val(vec & v1, int i){
   return v1(i);
 }
@@ -521,8 +521,8 @@ inline void minus( vec &v1, sparse_vec &v2){
 inline sparse_vec fabs( sparse_vec & dvec1){
    sparse_vec ret = dvec1;
    FOR_ITERATOR(i, ret){
-      ret.coeffRef(i.index()) = fabs(i.value()); 
-   }	
+      ret.coeffRef(i.index()) = fabs(i.value());
+   }
    return ret;
 };
 
@@ -530,7 +530,7 @@ inline vec fabs( const vec & dvec1){
    vec ret(dvec1.size());
    for (int i=0; i< dvec1.size(); i++){
       ret(i) = fabs(dvec1(i));
-   }	
+   }
    return ret;
 };
 inline double abs_sum(const mat& A){
@@ -655,7 +655,7 @@ inline void set_size(mat &a, int row, int col){
 }
 inline void set_new(sparse_vec&v, int ind, double val){
   v.set_new(ind, val);
-} 
+}
 #define FOR_ITERATOR(i, v) \
     for (int i = 0; i < v.nnz(); i++)
 inline int get_nz_index(sparse_vec &v, int i){
@@ -693,7 +693,7 @@ inline void set_div(sparse_vec&v, int i, double val){
   v.set(v.get_nz_index(i) ,v.get_nz_data(i) / val);
 }
 inline sparse_vec minus(sparse_vec &v1,sparse_vec &v2){
-/*  sparse_vec ret; 
+/*  sparse_vec ret;
   for (int i=0; i< v1.nnz(); i++){
       ret.set_new(v1.get_nz_index(i), v1.get_nz_data(i) - get_val(v2, v1.get_nz_index(i)));
   }
@@ -705,18 +705,18 @@ inline sparse_vec minus(sparse_vec &v1,sparse_vec &v2){
 }
 inline vec minus( sparse_vec &v1,  vec &v2){
   vec ret = -v2;;
-  FOR_ITERATOR(i, v1){  
+  FOR_ITERATOR(i, v1){
     ret.set(v1.get_nz_index(i), ret.get(v1.get_nz_index(i)) + v1.get_nz_data(i));
   }
   return ret;
 }
 inline void plus( vec &v1,  sparse_vec &v2){
-  FOR_ITERATOR(i, v2){ 
+  FOR_ITERATOR(i, v2){
      v1[get_nz_index(v2, i)] += get_nz_data(v2, i);
   }
 }
 inline void minus( vec &v1, sparse_vec &v2){
-  FOR_ITERATOR(i, v2){ 
+  FOR_ITERATOR(i, v2){
      v1[get_nz_index(v2, i)] -= get_nz_data(v2, i);
   }
 }
@@ -726,7 +726,7 @@ inline sparse_vec fabs( sparse_vec & dvec1){
        set_new(ret,get_nz_index(dvec1, i), fabs(get_nz_data(dvec1, i)));
    }
    return ret;
-	
+
 };
 
 inline vec fabs(const vec & a){
@@ -792,7 +792,7 @@ inline double get(sparse_vec & v1, int pos){
 
 
 inline double min( sparse_vec & dvec){
- 
+
   double dmin = 1e100;
   FOR_ITERATOR(i, dvec){
      dmin = std::min(dmin, get_nz_data(dvec, i));
@@ -801,7 +801,7 @@ inline double min( sparse_vec & dvec){
 }
 
 inline double max( sparse_vec & dvec){
- 
+
   double dmax = -1e100;
   FOR_ITERATOR(i, dvec){
      dmax = std::max(dmax, get_nz_data(dvec, i));
@@ -809,7 +809,7 @@ inline double max( sparse_vec & dvec){
   return dmax;
 }
 inline void plus_mul( vec &v1,  sparse_vec &v2, double factor){
-  FOR_ITERATOR(i, v2){  
+  FOR_ITERATOR(i, v2){
     v1[get_nz_index(v2, i)] += factor*get_nz_data(v2, i);
   }
 }
@@ -821,7 +821,7 @@ inline double sum( sparse_vec & dvec){
   }
   return sum;
 }
-inline vec dbl_fzeros(int size){ 
+inline vec dbl_fzeros(int size){
   return itpp::zeros(size);
 }
 inline mat dbl_fzeros(int rows, int cols){
