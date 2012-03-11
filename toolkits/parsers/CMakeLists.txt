@@ -1,0 +1,15 @@
+project(GraphLab)
+if (HAS_EIGEN)
+ link_libraries(boost_date_time)
+# Files were not added
+# add_graphlab_executable(stringparser stringparser.cpp formatconverter.cpp)
+add_graphlab_executable(stringzipparser stringzipparser.cpp
+formatconverter.cpp ../shared/mmio.cpp)
+add_graphlab_executable(undirectedgraph undirectedgraph.cpp formatconverter.cpp ../shared/mmio.cpp)
+#add_graphlab_executable(undirectedgraph2 undirectedgraph2.cpp formatconverter.cpp ../shared/mmio.cpp)
+add_graphlab_executable(graphbuilder graphbuilder.cpp
+formatconverter.cpp ../shared/mmio.cpp)
+add_graphlab_executable(matmat2bin matmat2bin.cpp ../shared/mmio.cpp)
+add_graphlab_executable(matmat2bin2 matmat2bin2.cpp ../shared/mmio.cpp)
+add_graphlab_executable(reversemap reversemap.cpp)
+endif()
