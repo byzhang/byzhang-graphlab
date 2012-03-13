@@ -1,5 +1,5 @@
-/**  
- * Copyright (c) 2009 Carnegie Mellon University. 
+/**
+ * Copyright (c) 2009 Carnegie Mellon University.
  *     All rights reserved.
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
@@ -21,7 +21,7 @@
  */
 
 
-/** \file 
+/** \file
  *
  * This file describes the icontext interface as well as the the
  * context_range_enum.
@@ -64,15 +64,19 @@ namespace graphlab {
 
     //! The vertex data type associated with the graph
     typedef typename graph_type::vertex_data_type  vertex_data_type;
+    typedef typename graph_type::reference_vertex_data_type  reference_vertex_data_type;
+    typedef typename graph_type::const_reference_vertex_data_type  const_reference_vertex_data_type;
     //! The edge data type associated with the graph
     typedef typename graph_type::edge_data_type    edge_data_type;
+    typedef typename graph_type::reference_edge_data_type  reference_edge_data_type;
+    typedef typename graph_type::const_reference_edge_data_type  const_reference_edge_data_type;
 
-  public:    
-    
+  public:
+
     /** icontext destructor */
     virtual ~icontext() { }
-    
-        
+
+
     /**
      * \brief Returns the vertex id of the base vertex in this context.
      *
@@ -81,14 +85,14 @@ namespace graphlab {
      * update function is being applied to.
      */
     virtual vertex_id_type vertex_id() const = 0;
-        
- 
+
+
     /**
      * \brief Get the vertex color of the base vertx in this context
      */
     virtual vertex_color_type color() const = 0;
 
-    
+
     //! Reverse an edge
     virtual edge_type reverse_edge(const edge_type& edge) const = 0;
 
@@ -96,7 +100,7 @@ namespace graphlab {
      * \brief test whether an edge is present
      *
      * This method tests whether the edge exists.  If the edge exists
-     * this method returns true.  
+     * this method returns true.
      */
     virtual edge_type find(vertex_id_type source,
                            vertex_id_type target) const  = 0;
@@ -109,7 +113,7 @@ namespace graphlab {
     virtual edge_list_type in_edges() const = 0;
 
     /**
-     * Get the number of in edges associated with the center vertex 
+     * Get the number of in edges associated with the center vertex
      */
     virtual size_t num_in_edges() const = 0;
 
@@ -145,10 +149,10 @@ namespace graphlab {
     virtual size_t num_out_edges(vertex_id_type v) const = 0;
 
 
-    
-   
+
+
     //! Get the consistency model under which this context was acquired
-    virtual consistency_model consistency() const = 0; 
+    virtual consistency_model consistency() const = 0;
 
     /**
      * \brief Get a mutable reference to the data associated with the
@@ -159,16 +163,16 @@ namespace graphlab {
      * Therefore if the vertex data does not need to be mutable use
      * the const reference version of vertex_data.
      */
-    virtual vertex_data_type& vertex_data() = 0;
-    
+    virtual reference_vertex_data_type vertex_data() = 0;
+
     /**
      * \brief Get an immutable reference to the data associated with
      * the vase vertex.
      *
      * This should be called if the data does not need to be modified.
-     */    
-    virtual const vertex_data_type& const_vertex_data() const = 0; 
-    
+     */
+    virtual const_reference_vertex_data_type const_vertex_data() const = 0;
+
     /**
      * \brief Get a mutable reference to the data associated with the
      * edge.
@@ -178,8 +182,8 @@ namespace graphlab {
      * const version of this function should be used to permit further
      * optimization.
      */
-    virtual edge_data_type& edge_data(const edge_type& edge) = 0;
-    virtual edge_data_type& 
+    virtual reference_edge_data_type edge_data(const edge_type& edge) = 0;
+    virtual reference_edge_data_type
     edge_data(vertex_id_type source, vertex_id_type target) = 0;
 
     /**
@@ -187,12 +191,12 @@ namespace graphlab {
      * the vase vertex.
      *
      * This should be called if the data does not need to be modified.
-     */    
-    virtual const edge_data_type& 
-    const_edge_data(const edge_type& eid) const = 0; 
-    virtual const edge_data_type& 
+     */
+    virtual const_reference_edge_data_type
+    const_edge_data(const edge_type& eid) const = 0;
+    virtual const_reference_edge_data_type
     const_edge_data(vertex_id_type source, vertex_id_type target) const = 0;
-    
+
     /**
      * \brief get a mutable reference to the data associated with a
      * neighboring vertex.
@@ -204,7 +208,7 @@ namespace graphlab {
      * const version of this function should be called to permit
      * further optimization by the graphlab engine.
      */
-    virtual vertex_data_type& vertex_data(vertex_id_type vertex) = 0; 
+    virtual reference_vertex_data_type vertex_data(vertex_id_type vertex) = 0;
 
     /**
      * \brief get an immutable reference to the data associated with a
@@ -214,7 +218,7 @@ namespace graphlab {
      * vertices. Unfortunately, due to the Log(d) lookup required to
      * enforce the adjacency constraint we do not check at this time.
      */
-    virtual const vertex_data_type& 
+    virtual const_reference_vertex_data_type
     const_vertex_data(vertex_id_type vertex) const = 0;
 
 
@@ -222,34 +226,34 @@ namespace graphlab {
      * Adds a task to execute the update function on the vertex with
      * the given priority.
      */
-    virtual void schedule(const vertex_id_type& vertex, 
-                          const update_functor_type& update_fun) = 0;    
+    virtual void schedule(const vertex_id_type& vertex,
+                          const update_functor_type& update_fun) = 0;
 
 
     /**
      * Schedule an update on all the neighbors of a particular vertex
      */
-    virtual void schedule_in_neighbors(const vertex_id_type& vertex, 
+    virtual void schedule_in_neighbors(const vertex_id_type& vertex,
                                        const update_functor_type& update_fun) = 0;
 
     /**
      * Schedule an update on all the out neighbors of a particular vertex
      */
-    virtual void schedule_out_neighbors(const vertex_id_type& vertex, 
+    virtual void schedule_out_neighbors(const vertex_id_type& vertex,
                                         const update_functor_type& update_fun) = 0;
-                                                  
+
 
     /**
      * Schedule an update on all the out neighbors of a particular vertex
      */
-    virtual void schedule_neighbors(const vertex_id_type& vertex, 
+    virtual void schedule_neighbors(const vertex_id_type& vertex,
                                     const update_functor_type& update_fun) = 0;
-                                                  
 
-    
+
+
 
   }; // end of icontexty
-  
+
 } // end of namespace
 #include <graphlab/macros_undef.hpp>
 

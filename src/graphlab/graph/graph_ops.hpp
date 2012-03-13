@@ -1,5 +1,5 @@
-/**  
- * Copyright (c) 2009 Carnegie Mellon University. 
+/**
+ * Copyright (c) 2009 Carnegie Mellon University.
  *     All rights reserved.
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
@@ -52,11 +52,11 @@
 
 #include <graphlab/macros_def.hpp>
 namespace graphlab {
-  
+
 
   namespace graph_ops {
 
-    /** \brief This function constructs a heuristic coloring for the 
+    /** \brief This function constructs a heuristic coloring for the
         graph and returns the number of colors */
     template<typename Graph>
     size_t color(Graph& graph) {
@@ -66,12 +66,12 @@ namespace graphlab {
       typedef typename Graph::edge_list_type     edge_list_type;
 
       // Reset the colors
-      for(vertex_id_type v = 0; v < graph.num_vertices(); ++v) graph.color(v) = 0;
+      for(vertex_id_type v = 0; v < graph.num_vertices(); ++v) graph.set_color(v, 0);
       // construct a permuation of the vertices to use in the greedy
-      // coloring. 
-      std::vector<std::pair<vertex_id_type, vertex_id_type> > 
+      // coloring.
+      std::vector<std::pair<vertex_id_type, vertex_id_type> >
 	permutation(graph.num_vertices());
-      for(vertex_id_type v = 0; v < graph.num_vertices(); ++v) 
+      for(vertex_id_type v = 0; v < graph.num_vertices(); ++v)
         permutation[v] = std::make_pair(-graph.in_edges(v).size(), v);
       //      std::random_shuffle(permutation.begin(), permutation.end());
       std::sort(permutation.begin(), permutation.end());
@@ -93,21 +93,22 @@ namespace graphlab {
           neighbor_colors.insert(neighbor_color);
         }
 
-        vertex_color_type& vertex_color = graph.color(vid);
+        vertex_color_type vertex_color = graph.color(vid);
         vertex_color = 0;
         foreach(vertex_color_type neighbor_color, neighbor_colors) {
           if(vertex_color != neighbor_color) break;
           else vertex_color++;
           // Ensure no wrap around
-          ASSERT_NE(vertex_color, 0);                
+          ASSERT_NE(vertex_color, 0);
         }
+        graph.set_color(vid, vertex_color);
         max_color = std::max(max_color, size_t(vertex_color) );
       }
       // Return the NUMBER of colors
-      return max_color + 1;           
+      return max_color + 1;
     } // end of compute coloring
-    
-    
+
+
     /**
      * \brief Check that the colors satisfy a valid coloring of the graph.
      * return true is coloring is valid;
@@ -132,14 +133,14 @@ namespace graphlab {
 
 
     /**
-     * builds a topological_sort of the graph returning it in topsort. 
-     * 
+     * builds a topological_sort of the graph returning it in topsort.
+     *
      * \param[out] topsort Resultant topological sort of the graph vertices.
      *
      * function will return false if graph is not acyclic.
      */
     template<typename Graph>
-    bool topological_sort(const Graph& graph, 
+    bool topological_sort(const Graph& graph,
                           std::vector<vertex_id_type>& topsort) {
       typedef typename Graph::vertex_id_type     vertex_id_type;
       typedef typename Graph::vertex_color_type  vertex_color_type;
@@ -156,7 +157,7 @@ namespace graphlab {
           q.push(i);
         }
       }
-    
+
       while (!q.empty()) {
         vertex_id_type v = q.front();
         q.pop();
@@ -169,26 +170,26 @@ namespace graphlab {
           }
         }
       }
-      if (q.empty() && topsort.size() != graph.num_vertices()) 
+      if (q.empty() && topsort.size() != graph.num_vertices())
         return false;
       return true;
     } // end of topological sort
 
 
     template<typename Graph>
-    size_t num_neighbors(const Graph& graph, 
+    size_t num_neighbors(const Graph& graph,
                          const typename Graph::vertex_id_type& vid) {
       typedef typename Graph::vertex_id_type     vertex_id_type;
       typedef typename Graph::vertex_color_type  vertex_color_type;
       typedef typename Graph::edge_type          edge_type;
       typedef typename Graph::edge_list_type     edge_list_type;
-      const edge_list_type in_edges =  graph.in_edges(vid); 
+      const edge_list_type in_edges =  graph.in_edges(vid);
       const edge_list_type out_edges = graph.out_edges(vid);
       typedef typename edge_list_type::const_iterator iterator_type;
       iterator_type i = in_edges.begin();
       iterator_type j = out_edges.begin();
-      size_t count = 0;      
-      for( ; i != in_edges.end() && j != out_edges.end(); ++count) 
+      size_t count = 0;
+      for( ; i != in_edges.end() && j != out_edges.end(); ++count)
         if(i->source() == j->target()) { ++i; ++j; }
         else if(i->source() < j->target()) { ++i; }
         else { ++j; }
@@ -200,32 +201,32 @@ namespace graphlab {
 
 
     template<typename Graph>
-    void neighbors(const Graph& graph, const vertex_id_type& vid,   
+    void neighbors(const Graph& graph, const vertex_id_type& vid,
                           std::vector<vertex_id_type>& neighbors ) {
       typedef typename Graph::vertex_id_type     vertex_id_type;
       typedef typename Graph::vertex_color_type  vertex_color_type;
       typedef typename Graph::edge_type          edge_type;
       typedef typename Graph::edge_list_type     edge_list_type;
-      const edge_list_type in_edges =  graph.in_edges(vid); 
+      const edge_list_type in_edges =  graph.in_edges(vid);
       const edge_list_type out_edges = graph.out_edges(vid);
       typedef typename edge_list_type::const_iterator iterator_type;
       iterator_type i = in_edges.begin();
       iterator_type j = out_edges.begin();
       neighbors.resize(num_neighbors(graph, vid));
       size_t idx = 0;
-      for( ; i != in_edges.end() && j != out_edges.end(); ++idx) 
-        if(i->source() == j->target()) { 
-          neighbors[idx] = i->source(); ++i; ++j; 
+      for( ; i != in_edges.end() && j != out_edges.end(); ++idx)
+        if(i->source() == j->target()) {
+          neighbors[idx] = i->source(); ++i; ++j;
         } else if(i->source() < j->target()) {
-          neighbors[idx] = i->source(); ++i; 
-        } else { neighbors[idx] = j->target(); ++j; } 
+          neighbors[idx] = i->source(); ++i;
+        } else { neighbors[idx] = j->target(); ++j; }
       for( ; i != in_edges.end(); ++i, ++idx)
         neighbors[idx] = i->source();
       for( ; j != out_edges.end(); ++j, ++idx)
         neighbors[idx] = j->target();
       ASSERT_EQ(idx, neighbors.size());
     } // end of neighbors
-    
+
 
     template<typename Graph, typename Fstream>
     bool load_snap_structure(Fstream& fin, Graph& graph) {
@@ -250,17 +251,17 @@ namespace graphlab {
         if(source >= graph.num_vertices() || target >= graph.num_vertices())
           graph.resize(std::max(source, target) + 1);
         if(source != target) graph.add_edge(source, target);
-        else if(self_edges++ == 0) 
-          logstream(LOG_WARNING) 
+        else if(self_edges++ == 0)
+          logstream(LOG_WARNING)
             << "Self edge encountered but not supported!" << std::endl
             << "\t Further warnings will be surpressed." << std::endl;
-      } // end of while loop       
-      logstream(LOG_INFO) 
+      } // end of while loop
+      logstream(LOG_INFO)
         << "Finished loading graph with: " << std::endl
         << "\t Vertices: " << graph.num_vertices() << std::endl
         << "\t Edges:  " << graph.num_edges() << std::endl;
-      if(self_edges > 0) 
-        logstream(LOG_INFO) << "\t Dropped self edges: " << self_edges 
+      if(self_edges > 0)
+        logstream(LOG_INFO) << "\t Dropped self edges: " << self_edges
                             << std::endl;
       return true;
     } // end of load SNAP
@@ -284,31 +285,31 @@ namespace graphlab {
            target >= graph.num_vertices())
           graph.resize(std::max(source, target) + 1);
         if(source != target) graph.add_edge(source, target);
-        else if(self_edges++ == 0) 
-          logstream(LOG_WARNING) 
+        else if(self_edges++ == 0)
+          logstream(LOG_WARNING)
             << "Self edge encountered but not supported!" << std::endl
             << "\t Further warnings will be surpressed." << std::endl;
-      }            
-      logstream(LOG_INFO) 
+      }
+      logstream(LOG_INFO)
         << "Finished loading graph with: " << std::endl
         << "\t Vertices: " << graph.num_vertices() << std::endl
-        << "\t Edges: " << graph.num_edges() << std::endl;        
-      if(self_edges > 0) 
-        logstream(LOG_INFO) << "\t Dropped self edges: " << self_edges 
-                            << std::endl;  
+        << "\t Edges: " << graph.num_edges() << std::endl;
+      if(self_edges > 0)
+        logstream(LOG_INFO) << "\t Dropped self edges: " << self_edges
+                            << std::endl;
       return true;
     } // end of load edge list
-    
+
 
 
     template<typename Fstream>
     inline void skip_newline(Fstream& fin) {
       char next_char = ' '; fin.get(next_char);
-      ASSERT_EQ(next_char, '\n');  
+      ASSERT_EQ(next_char, '\n');
     }
-    
+
     template<typename Graph, typename Fstream>
-    bool load_metis_structure(Fstream& fin, Graph& graph) { 
+    bool load_metis_structure(Fstream& fin, Graph& graph) {
       typedef typename Graph::vertex_id_type     vertex_id_type;
       typedef typename Graph::vertex_color_type  vertex_color_type;
       typedef typename Graph::edge_type          edge_type;
@@ -316,10 +317,10 @@ namespace graphlab {
       if(!fin.good()) return false;
       size_t nverts = 0, nedges = 0;
       fin >> nverts >> nedges;
-      logstream(LOG_INFO) 
+      logstream(LOG_INFO)
         << "Loading graph with: " << std::endl
         << "\t Vertices: " << nverts << std::endl
-        << "\t Edges: " << nedges << std::endl;          
+        << "\t Edges: " << nedges << std::endl;
       skip_newline(fin);
       graph.resize(nverts);
       size_t self_edges = 0;
@@ -327,46 +328,46 @@ namespace graphlab {
         while(fin.peek() != '\n') {
           ASSERT_TRUE(fin.good());
           vertex_id_type target = 0;
-          fin >> target; 
+          fin >> target;
           ASSERT_GT(target, 0);
           // decrement the value since starting value is 1 not zero
-          target--; 
-          ASSERT_LT(target, graph.num_vertices());     
+          target--;
+          ASSERT_LT(target, graph.num_vertices());
           if(source != target) graph.add_edge(source, target);
-          else if(self_edges++ == 0) 
-            logstream(LOG_WARNING) 
+          else if(self_edges++ == 0)
+            logstream(LOG_WARNING)
               << "Self edge encountered but not supported!" << std::endl
               << "\t Further warnings will be surpressed." << std::endl;
-          
+
         }
         skip_newline(fin);
       }
-      logstream(LOG_INFO) 
+      logstream(LOG_INFO)
         << "Finished loading graph with: " << std::endl
         << "\t Vertices: " << graph.num_vertices() << std::endl
-        << "\t Edges: " << graph.num_edges() << std::endl;      
-      if(self_edges > 0) 
-        logstream(LOG_INFO) << "\t Dropped self edges: " << self_edges 
+        << "\t Edges: " << graph.num_edges() << std::endl;
+      if(self_edges > 0)
+        logstream(LOG_INFO) << "\t Dropped self edges: " << self_edges
                             << std::endl;
       return true;
     } // end of load metis
 
 
     template<typename Graph, typename Fstream>
-    bool load_adj_structure(Fstream& fin, Graph& graph) { 
+    bool load_adj_structure(Fstream& fin, Graph& graph) {
       typedef typename Graph::vertex_id_type     vertex_id_type;
       typedef typename Graph::vertex_color_type  vertex_color_type;
       typedef typename Graph::edge_type          edge_type;
       typedef typename Graph::edge_list_type     edge_list_type;
       if(!fin.good()) { return false; }
-      size_t self_edges = 0;     
+      size_t self_edges = 0;
       size_t ctr = 0;
       // Loop over the contents
       while(fin.good()) {
         // Load a vertex
         size_t source = 0, nneighbors = 0;
-        try { fin >> source >> nneighbors; } catch ( ... ) { 
-          logstream(LOG_WARNING) 
+        try { fin >> source >> nneighbors; } catch ( ... ) {
+          logstream(LOG_WARNING)
             << "Error reading source." << std::endl; return false;
         }
         if(!fin.good()) break;
@@ -376,28 +377,28 @@ namespace graphlab {
         for(size_t i = 0; i < nneighbors; ++i) {
           size_t target = 0;
           try { fin >> target; } catch ( ... ) {
-            logstream(LOG_WARNING) 
-              << "Error reading neighbor" << std::endl; 
+            logstream(LOG_WARNING)
+              << "Error reading neighbor" << std::endl;
             return false;
           }
           if(!fin.good()) {
-            logstream(LOG_WARNING) 
-              << "Error reading neighbor" << std::endl; 
+            logstream(LOG_WARNING)
+              << "Error reading neighbor" << std::endl;
             return false;
           }
           // Resize the graph if needed
           if(target >= graph.num_vertices()) graph.resize(target + 1);
-    
+
           if(source != target) graph.add_edge(source, target);
-          else if(self_edges++ == 0) 
-            logstream(LOG_WARNING) 
+          else if(self_edges++ == 0)
+            logstream(LOG_WARNING)
               << "Self edge encountered but not supported!" << std::endl
               << "\t Further warnings will be surpressed." << std::endl;
         } // end of loop over neighbors
-        if (++ctr % 1000000 == 0) 
-          logstream(LOG_INFO) 
-            << "Added edata for " << ctr << " vertices: " 
-            << source << std::endl; 
+        if (++ctr % 1000000 == 0)
+          logstream(LOG_INFO)
+            << "Added edata for " << ctr << " vertices: "
+            << source << std::endl;
       } // end of loop over file
       return true;
     } // end of load_adj_list
@@ -428,7 +429,7 @@ namespace graphlab {
       if(boost::starts_with(fname, "hdfs://")) {
         graphlab::hdfs hdfs;
         graphlab::hdfs::fstream in_file(hdfs, fname);
-        boost::iostreams::filtering_stream<boost::iostreams::input> fin;  
+        boost::iostreams::filtering_stream<boost::iostreams::input> fin;
         fin.set_auto_close(false);
         if(gzip) fin.push(boost::iostreams::gzip_decompressor());
         fin.push(in_file);
@@ -442,9 +443,9 @@ namespace graphlab {
         in_file.close();
         return success;
       } else {
-        std::ifstream in_file(fname.c_str(), 
+        std::ifstream in_file(fname.c_str(),
                               std::ios_base::in | std::ios_base::binary);
-        boost::iostreams::filtering_stream<boost::iostreams::input> fin;  
+        boost::iostreams::filtering_stream<boost::iostreams::input> fin;
         // Using gzip filter
         if (gzip) fin.push(boost::iostreams::gzip_decompressor());
         fin.push(in_file);
@@ -463,12 +464,12 @@ namespace graphlab {
     bool load_structure(const std::string& fname, Graph& graph) {
       const size_t pos = fname.rfind('.');
       if(pos == std::string::npos || pos + 1 >= fname.size()) {
-        logstream(LOG_WARNING) 
-          << "Filename \"" << fname 
+        logstream(LOG_WARNING)
+          << "Filename \"" << fname
           << "\" does not have a suffix." << std::endl
           << "Unable to infer file format!" << std::endl;
         return false;
-      }      
+      }
       const std::string format(fname.substr(pos+1, std::string::npos));
       logstream(LOG_INFO) << "File format: " << format << std::endl;
       return load_structure(fname, format, graph);
@@ -509,18 +510,18 @@ namespace graphlab {
     //     if(source >= graph.num_vertices() || target >= graph.num_vertices())
     //       graph.resize(std::max(source, target) + 1);
     //     if(source != target) graph.add_edge(source, target);
-    //     else if(self_edges++ == 0) 
-    //       logstream(LOG_WARNING) 
+    //     else if(self_edges++ == 0)
+    //       logstream(LOG_WARNING)
     //         << "Self edge encountered but not supported!" << std::endl
     //         << "\t Further warnings will be surpressed." << std::endl;
-    //   } // end of while loop       
+    //   } // end of while loop
     //   fin.close();
-    //   logstream(LOG_INFO) 
+    //   logstream(LOG_INFO)
     //     << "Finished loading graph with: " << std::endl
     //     << "\t Vertices: " << graph.num_vertices() << std::endl
     //     << "\t Edges:  " << graph.num_edges() << std::endl;
-    //   if(self_edges > 0) 
-    //     logstream(LOG_INFO) << "\t Dropped self edges: " << self_edges 
+    //   if(self_edges > 0)
+    //     logstream(LOG_INFO) << "\t Dropped self edges: " << self_edges
     //                         << std::endl;
     //   return true;
     // } // end of load SNAP
@@ -544,31 +545,31 @@ namespace graphlab {
     //        target >= graph.num_vertices())
     //       graph.resize(std::max(source, target) + 1);
     //     if(source != target) graph.add_edge(source, target);
-    //     else if(self_edges++ == 0) 
-    //       logstream(LOG_WARNING) 
+    //     else if(self_edges++ == 0)
+    //       logstream(LOG_WARNING)
     //         << "Self edge encountered but not supported!" << std::endl
     //         << "\t Further warnings will be surpressed." << std::endl
-    //   }            
+    //   }
     //   fin.close();
-    //   logstream(LOG_INFO) 
+    //   logstream(LOG_INFO)
     //     << "Finished loading graph with: " << std::endl
     //     << "\t Vertices: " << graph.num_vertices() << std::endl
-    //     << "\t Edges: " << graph.num_edges() << std::endl;        
-    //   if(self_edges > 0) 
-    //     logstream(LOG_INFO) << "\t Dropped self edges: " << self_edges 
-    //                         << std::endl;  
+    //     << "\t Edges: " << graph.num_edges() << std::endl;
+    //   if(self_edges > 0)
+    //     logstream(LOG_INFO) << "\t Dropped self edges: " << self_edges
+    //                         << std::endl;
     //   return true;
     // } // end of load edge list
 
-    
+
     template<typename Graph>
     bool save_metis_structure(const std::string& filename,
-                              const Graph& graph) { 
+                              const Graph& graph) {
       typedef typename Graph::vertex_id_type     vertex_id_type;
       typedef typename Graph::vertex_color_type  vertex_color_type;
       typedef typename Graph::edge_type          edge_type;
       typedef typename Graph::edge_list_type     edge_list_type;
-    
+
       std::ofstream fout(filename.c_str());
       if(!fout.good()) return false;
       // Count the number of actual edges
@@ -592,16 +593,16 @@ namespace graphlab {
 
     template<typename Graph>
     bool save_edge_list_structure(const std::string& filename,
-                                  const Graph& graph) { 
+                                  const Graph& graph) {
       typedef typename Graph::vertex_id_type     vertex_id_type;
       typedef typename Graph::vertex_color_type  vertex_color_type;
       typedef typename Graph::edge_type          edge_type;
       typedef typename Graph::edge_list_type     edge_list_type;
       std::ofstream fout(filename.c_str());
       if(!fout.good()) return false;
-      for(vertex_id_type i = 0; i < graph.num_vertices(); ++i) 
-        foreach(edge_type edge, graph.out_edges(i)) 
-          fout << edge.source() << '\t' << edge.target() << '\n';      
+      for(vertex_id_type i = 0; i < graph.num_vertices(); ++i)
+        foreach(edge_type edge, graph.out_edges(i))
+          fout << edge.source() << '\t' << edge.target() << '\n';
       fout.close();
       return true;
     } // end of save metis
@@ -609,7 +610,7 @@ namespace graphlab {
 
     template<typename Graph>
     bool save_patoh_hypergraph_structure(const std::string& filename,
-                                         const Graph& graph) { 
+                                         const Graph& graph) {
       typedef typename Graph::vertex_id_type     vertex_id_type;
       typedef typename Graph::vertex_color_type  vertex_color_type;
       typedef typename Graph::edge_type          edge_type;
@@ -619,12 +620,12 @@ namespace graphlab {
 
       // ok. I need to uniquely number each edge.
       // how?
-      boost::unordered_map<std::pair<vertex_id_type, 
+      boost::unordered_map<std::pair<vertex_id_type,
                                      vertex_id_type>, size_t> edgetoid;
       size_t curid = 0;
       for(vertex_id_type i = 0; i < graph.num_vertices(); ++i) {
         foreach(const typename Graph::edge_type& edge, graph.in_edges(i)) {
-          std::pair<vertex_id_type, vertex_id_type> e = 
+          std::pair<vertex_id_type, vertex_id_type> e =
                                   std::make_pair(edge.source(), edge.target());
           if (e.first > e.second) std::swap(e.first, e.second);
           if (edgetoid.find(e) == edgetoid.end()) {
@@ -633,7 +634,7 @@ namespace graphlab {
           }
         }
         foreach(const typename Graph::edge_type& edge, graph.out_edges(i)) {
-          std::pair<vertex_id_type, vertex_id_type> e = 
+          std::pair<vertex_id_type, vertex_id_type> e =
                                   std::make_pair(edge.source(), edge.target());
           if (e.first > e.second) std::swap(e.first, e.second);
           if (edgetoid.find(e) == edgetoid.end()) {
@@ -647,20 +648,20 @@ namespace graphlab {
       size_t numedges = curid;
       // each edge is a vertex, each vertex is an edge
       // a pin is total adjacency of a hyper edge
-      fout << "0 " << numedges  << " " << graph.num_vertices() 
+      fout << "0 " << numedges  << " " << graph.num_vertices()
            << " " << numedges  * 2 << "\n";
-      
+
       // loop over the "hyperedge" and write out the edges it is adjacent to
       for(vertex_id_type i = 0; i < graph.num_vertices(); ++i) {
         boost::unordered_set<size_t> adjedges;
         foreach(const typename Graph::edge_type& edge, graph.in_edges(i)) {
-          std::pair<vertex_id_type, vertex_id_type> e = 
+          std::pair<vertex_id_type, vertex_id_type> e =
                                   std::make_pair(edge.source(), edge.target());
           if (e.first > e.second) std::swap(e.first, e.second);
           adjedges.insert(edgetoid[e]);
         }
         foreach(const typename Graph::edge_type& edge, graph.out_edges(i)) {
-          std::pair<vertex_id_type, vertex_id_type> e = 
+          std::pair<vertex_id_type, vertex_id_type> e =
                                   std::make_pair(edge.source(), edge.target());
           if (e.first > e.second) std::swap(e.first, e.second);
           adjedges.insert(edgetoid[e]);
@@ -678,7 +679,7 @@ namespace graphlab {
 
     template<typename Graph>
     bool save_zoltan_hypergraph_structure(const std::string& filename,
-                                          const Graph& graph) { 
+                                          const Graph& graph) {
       typedef typename Graph::vertex_id_type     vertex_id_type;
       typedef typename Graph::vertex_color_type  vertex_color_type;
       typedef typename Graph::edge_type          edge_type;
@@ -688,12 +689,12 @@ namespace graphlab {
 
       // ok. I need to uniquely number each edge.
       // how?
-      boost::unordered_map<std::pair<vertex_id_type, 
+      boost::unordered_map<std::pair<vertex_id_type,
                                      vertex_id_type>, size_t> edgetoid;
       size_t curid = 0;
       for(vertex_id_type i = 0; i < graph.num_vertices(); ++i) {
         foreach(const typename Graph::edge_type& edge, graph.in_edges(i)) {
-          std::pair<vertex_id_type, vertex_id_type> e = 
+          std::pair<vertex_id_type, vertex_id_type> e =
                                   std::make_pair(edge.source(), edge.target());
           if (e.first > e.second) std::swap(e.first, e.second);
           if (edgetoid.find(e) == edgetoid.end()) {
@@ -702,7 +703,7 @@ namespace graphlab {
           }
         }
         foreach(const typename Graph::edge_type& edge, graph.out_edges(i)) {
-          std::pair<vertex_id_type, vertex_id_type> e = 
+          std::pair<vertex_id_type, vertex_id_type> e =
                                   std::make_pair(edge.source(), edge.target());
           if (e.first > e.second) std::swap(e.first, e.second);
           if (edgetoid.find(e) == edgetoid.end()) {
@@ -722,28 +723,28 @@ namespace graphlab {
       }
       fout << "\n";
       fout << graph.num_vertices() << "\n\n";
-      
+
       fout << numedges * 2 << "\n\n";
       // loop over the "hyperedge" and write out the edges it is adjacent to
       for(vertex_id_type i = 0; i < graph.num_vertices(); ++i) {
         boost::unordered_set<size_t> adjedges;
         foreach(const typename Graph::edge_type& edge, graph.in_edges(i)) {
-          std::pair<vertex_id_type, vertex_id_type> e = 
+          std::pair<vertex_id_type, vertex_id_type> e =
                                   std::make_pair(edge.source(), edge.target());
           if (e.first > e.second) std::swap(e.first, e.second);
           adjedges.insert(edgetoid[e]);
         }
         foreach(const typename Graph::edge_type& edge, graph.out_edges(i)) {
-          std::pair<vertex_id_type, vertex_id_type> e = 
+          std::pair<vertex_id_type, vertex_id_type> e =
                                   std::make_pair(edge.source(), edge.target());
           if (e.first > e.second) std::swap(e.first, e.second);
           adjedges.insert(edgetoid[e]);
         }
         // write
         std::vector<size_t> adjedgesvec;
-        std::copy(adjedges.begin(), adjedges.end(), 
+        std::copy(adjedges.begin(), adjedges.end(),
                   std::inserter(adjedgesvec, adjedgesvec.end()));
-        fout << i+1 << " " << adjedgesvec.size() << "\t";        
+        fout << i+1 << " " << adjedgesvec.size() << "\t";
         for (size_t j = 0;j < adjedgesvec.size(); ++j) {
           fout << adjedgesvec[j] + 1;
           if (j < adjedgesvec.size() - 1) fout << "\t";
@@ -764,7 +765,7 @@ namespace graphlab {
     //   else {
     //     logstream(LOG_WARNING)
     //       << "Invalid format \"" << format << "\".  "
-    //       << "Unable to save file \"" << fname << "\"!" << std::endl;     
+    //       << "Unable to save file \"" << fname << "\"!" << std::endl;
     //   }
     //   return false;
     // } // end of save
@@ -775,12 +776,12 @@ namespace graphlab {
     //           const Graph& graph) {
     //   const size_t pos = fname.rfind('.');
     //   if(pos == std::string::npos || pos + 1 >= fname.size()) {
-    //     logstream(LOG_WARNING) 
-    //       << "Filename \"" << fname 
+    //     logstream(LOG_WARNING)
+    //       << "Filename \"" << fname
     //       << "\" does not have a suffix." << std::endl
     //       << "Unable to infer file format!" << std::endl;
     //     return false;
-    //   }      
+    //   }
     //   const std::string format(fname.substr(pos+1, std::string::npos));
     //   logstream(LOG_INFO) << "File format: " << format << std::endl;
     //   return save(fname, format, graph);

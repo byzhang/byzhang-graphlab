@@ -1,5 +1,5 @@
-/**  
- * Copyright (c) 2009 Carnegie Mellon University. 
+/**
+ * Copyright (c) 2009 Carnegie Mellon University.
  *     All rights reserved.
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
@@ -52,10 +52,10 @@ struct vertex_data {
 
   void add_self_edge(double value) { }
 
-  void set_val(double value, int field_type) { 
+  void set_val(double value, int field_type) {
   }
   //only one output for jacobi - solution x
-  double get_output(int field_type){ 
+  double get_output(int field_type) const {
     if (field_type == KCORE_INDEX)
       return kcore;
     return -1;
@@ -97,7 +97,7 @@ struct kcore_update :
 
     int cur_iter = iiter;
     int cur_links = 0;
-    
+
     const edge_list_type outedgeid = context.out_edges();
     const edge_list_type inedgeid = context.in_edges();
 
@@ -124,7 +124,7 @@ struct kcore_update :
         for (size_t i =0; i < inedgeid.size(); i++){
           const vertex_data & other = context.const_vertex_data(inedgeid[i].source());
            if (other.active)
-	     context.schedule(inedgeid[i].source(), kcore_update());    
+	     context.schedule(inedgeid[i].source(), kcore_update());
         }
     }
   };
@@ -140,7 +140,7 @@ public:
   aggregator() : num_active(0), links(0) { }
 
   void operator()(icontext_type& context) {
-    vertex_data & vdata = context.vertex_data();
+    const vertex_data & vdata = context.vertex_data();
     if (!vdata.active) return;
     int increasing_links = 0;
     const edge_list_type outedgeid = context.out_edges();
@@ -154,7 +154,7 @@ public:
     num_active++;
   };
 
-  void operator+=(const aggregator& other) { 
+  void operator+=(const aggregator& other) {
     num_active += other.num_active;
     links += other.links;
   }
@@ -167,7 +167,7 @@ public:
    active_links_num[iiter] = links;
 
    if (num_active == 0){
-     context.terminate(); 
+     context.terminate();
      max_iter = iiter;
    }
  }
@@ -178,7 +178,7 @@ public:
 
 
 int main(int argc,  char *argv[]) {
-  
+
   global_logger().set_log_level(LOG_INFO);
   global_logger().set_log_to_console(true);
 
@@ -195,12 +195,12 @@ int main(int argc,  char *argv[]) {
   clopts.add_positional("data");
   clopts.attach_option("format", &format, format, "matrix format");
   clopts.attach_option("lineformat", &lineformat, lineformat, "matrix line format");
-  
+
   clopts.attach_option("debug", &debug, debug, "Display debug output.");
-  clopts.attach_option("unittest", &unittest, unittest, 
+  clopts.attach_option("unittest", &unittest, unittest,
 		       "unit testing 0=None, 1=TBD");
   clopts.attach_option("max_iter", &max_iter, max_iter, "maximal number of cores");
-  clopts.attach_option("nodes", &nodes, nodes, "number of nodes"); 
+  clopts.attach_option("nodes", &nodes, nodes, "number of nodes");
   clopts.attach_option("gzip", &gzip, gzip, "gzipped input file?");
   // Parse the command line arguments
   if(!clopts.parse(argc, argv)) {
@@ -214,11 +214,11 @@ int main(int argc,  char *argv[]) {
 
   logstream(LOG_WARNING)
     << "Eigen detected. (This is actually good news!)" << std::endl;
-  logstream(LOG_INFO) 
-    << "GraphLab Linear solver library code by Danny Bickson, CMU" 
-    << std::endl 
-    << "Send comments and bug reports to danny.bickson@gmail.com" 
-    << std::endl 
+  logstream(LOG_INFO)
+    << "GraphLab Linear solver library code by Danny Bickson, CMU"
+    << std::endl
+    << "Send comments and bug reports to danny.bickson@gmail.com"
+    << std::endl
     << "Currently implemented algorithms are: Gaussian Belief Propagation, "
     << "Jacobi method, Conjugate Gradient" << std::endl;
 
@@ -252,8 +252,8 @@ int main(int argc,  char *argv[]) {
   assert(in_files.size() > 0);
   for (int i=0; i< std::min(max_files, (int)in_files.size()); i++){
       graphlab::timer mt; mt.start();
-      /*load_cpp_graph(dirpath + in_files[i], format, 
-    	           matrix_info, core.graph(), 
+      /*load_cpp_graph(dirpath + in_files[i], format,
+    	           matrix_info, core.graph(),
 	           false, MATRIX_MARKET_3);*/
       core.graph().load_directed(dirpath + in_files[i], false, false);
 
@@ -266,16 +266,16 @@ int main(int argc,  char *argv[]) {
     else if (datafile == "netflixe"){
       matrix_info.rows = 480189; matrix_info.cols = 17770; matrix_info.nonzeros= 99072112;
     }
-      
+
     logstream(LOG_INFO)<<mt.current_time() << "Takes to load graph" << std::endl;
-  } 
+  }
 
 
   calc_initial_degree(&core.graph(), matrix_info);
 
   //std::cout << "Schedule all vertices" << std::endl;
   core.schedule_all(kcore_update());
- 
+
   aggregator acum;
   core.add_aggregator("sync", acum, 1000000000);
   core.add_global("NUM_ACTIVE", int(0));
@@ -290,7 +290,7 @@ int main(int argc,  char *argv[]) {
       if (active_nodes_num[iiter] == 0)
 	break;
   }
- 
+
   std::cout << "KCORES finished in " << mytimer.current_time() << std::endl;
   std::cout << "Number of updates: " << core.last_update_count() << " per node: " << ((double)core.last_update_count())/core.graph().num_vertices() << std::endl;
 
@@ -307,7 +307,7 @@ int main(int argc,  char *argv[]) {
       set_val(retmat, i, 2, active_nodes_num[0]-active_nodes_num[i]);
       set_val(retmat, i, 3, core.graph().num_edges() - active_links_num[i]);
     }
-  } 
+  }
   //write_output_matrix(datafile + ".kcores.out", format, retmat);
   std::cout<<retmat<<std::endl;
 

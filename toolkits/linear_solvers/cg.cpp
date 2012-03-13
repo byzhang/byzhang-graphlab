@@ -1,5 +1,5 @@
-/**  
- * Copyright (c) 2009 Carnegie Mellon University. 
+/**
+ * Copyright (c) 2009 Carnegie Mellon University.
  *     All rights reserved.
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
@@ -49,11 +49,11 @@ struct vertex_data {
   }
   void add_self_edge(double value) { A_ii = value + regularization; }
 
-  void set_val(double value, int field_type) { 
+  void set_val(double value, int field_type) {
     pvec[field_type] = value;
   }
   //only one output for jacobi - solution x
-  double get_output(int field_type){ return pvec[field_type]; }
+  double get_output(int field_type) const { return pvec[field_type]; }
 }; // end of vertex_data
 
 struct edge_data {
@@ -102,7 +102,7 @@ void test_math(int unittest, bipartite_graph_descriptor & info, math_info & mi){
     DistVec p(info, CG_P,true, "p");
     DistVec x(info, CG_X,true, "x");
     DistVec Ap(info, CG_AP, false, "Ap");
- 
+
     x = ones(3);
     assert(x[0] == 1);
     assert(x[1] == 1);
@@ -126,10 +126,10 @@ void test_math(int unittest, bipartite_graph_descriptor & info, math_info & mi){
 
     p = A*b;
     vec pret = p.to_vec();
-    assert(pow(p[0] - 0.89646579890448475,2) <1e-15); 
+    assert(pow(p[0] - 0.89646579890448475,2) <1e-15);
 
     Ap = A._transpose() * p;
-    assert(pow(Ap[0] -1.69277,2)<1e-8); 
+    assert(pow(Ap[0] -1.69277,2)<1e-8);
 
     x = zeros(3);
     p = A*x;
@@ -168,7 +168,7 @@ void test_math(int unittest, bipartite_graph_descriptor & info, math_info & mi){
     exit(0);
 }
 
-void setup_unittest(int unittest){   
+void setup_unittest(int unittest){
    if (unittest == 1){
      datafile = "unittest1.mtx"; yfile = "unittest1.mtxv"; max_iter = 20; threshold = 1e-10;
    }
@@ -180,7 +180,7 @@ void verify_values(int unittest, double residual){
 }
 
 int main(int argc,  char *argv[]) {
-  
+
   global_logger().set_log_level(LOG_INFO);
   global_logger().set_log_to_console(true);
 
@@ -201,15 +201,15 @@ int main(int argc,  char *argv[]) {
   clopts.add_positional("threshold");
   clopts.attach_option("format", &format, format, "matrix format");
   clopts.attach_option("debug", &debug, debug, "Display debug output.");
-  clopts.attach_option("syncinterval", 
-                       &sync_interval, sync_interval, 
+  clopts.attach_option("syncinterval",
+                       &sync_interval, sync_interval,
                        "sync interval (number of update functions before convergen detection");
-  clopts.attach_option("regularization", &regularization, regularization, 
+  clopts.attach_option("regularization", &regularization, regularization,
 	               "regularization added to the main diagonal");
-  clopts.attach_option("unittest", &unittest, unittest, 
+  clopts.attach_option("unittest", &unittest, unittest,
 		       "unit testing 0=None, 1=3x3 matrix");
   clopts.attach_option("max_iter", &max_iter, max_iter, "max number of iterations");
-  clopts.attach_option("calc_residual", &calc_residual, calc_residual, "calc residual in each iteration"); 
+  clopts.attach_option("calc_residual", &calc_residual, calc_residual, "calc residual in each iteration");
   clopts.attach_option("final_residual", &final_residual, final_residual, "calc residual at the end (norm(Ax-b))");
   clopts.attach_option("zero", &zero, zero, "Allow for zero edges (matrix entries)");
   // Parse the command line arguments
@@ -220,11 +220,11 @@ int main(int argc,  char *argv[]) {
 
   logstream(LOG_WARNING)
     << "Eigen detected. (This is actually good news!)" << std::endl;
-  logstream(LOG_INFO) 
-    << "GraphLab Linear solver library code by Danny Bickson, CMU" 
-    << std::endl 
-    << "Send comments and bug reports to danny.bickson@gmail.com" 
-    << std::endl 
+  logstream(LOG_INFO)
+    << "GraphLab Linear solver library code by Danny Bickson, CMU"
+    << std::endl
+    << "Send comments and bug reports to danny.bickson@gmail.com"
+    << std::endl
     << "Currently implemented algorithms are: Gaussian Belief Propagation, "
     << "Jacobi method, Conjugate Gradient" << std::endl;
 
@@ -245,12 +245,12 @@ int main(int argc,  char *argv[]) {
   load_vector(yfile, format, matrix_info, core.graph(), CG_X, false,  zero);
   std::cout << "Load x values" << std::endl;
   load_vector(xfile, format, matrix_info, core.graph(), CG_Y, true, zero);
-  
+
   math_info mi;
   init_math(&core.graph(), &core, matrix_info);
 
   if (unittest == 2)
-    test_math(unittest, matrix_info, mi); 
+    test_math(unittest, matrix_info, mi);
 
     DistMat A(matrix_info);
     DistVec b(matrix_info, CG_Y,true, "b");
@@ -279,7 +279,7 @@ int main(int argc,  char *argv[]) {
        p = r;
        rsold = r'*r;
     */
-    r=-A*x+b; 
+    r=-A*x+b;
     if (!matrix_info.is_square())
       r=A._transpose()*r;
     p = r;
@@ -287,19 +287,19 @@ int main(int argc,  char *argv[]) {
 
      /*
      for i=1:size(A,1)
-        Ap=A*p; 
+        Ap=A*p;
         if (~square)
-          Ap=A'*Ap; 
-        end             
-        alpha=rsold/(p'*Ap); 
-        x=x+alpha*p;        
-        r=r-alpha*Ap;      
-        rsnew=r'*r;       
-        if sqrt(rsnew)<1e-10 
+          Ap=A'*Ap;
+        end
+        alpha=rsold/(p'*Ap);
+        x=x+alpha*p;
+        r=r-alpha*Ap;
+        rsnew=r'*r;
+        if sqrt(rsnew)<1e-10
               break;
         end
-        p=r+rsnew/rsold*p;  
-        rsold=rsnew;       
+        p=r+rsnew/rsold*p;
+        rsold=rsnew;
     end
     */
 
@@ -309,7 +309,7 @@ int main(int argc,  char *argv[]) {
           Ap= A._transpose()*Ap;
         alpha = rsold/(p._transpose()*Ap);
         x=x+alpha*p;
-   
+
         if (calc_residual){
           t=A*x-b;
           logstream(LOG_INFO)<<"Iteration " << i << " approximated solution residual is " << norm(t).toDouble() << std::endl;
@@ -319,7 +319,7 @@ int main(int argc,  char *argv[]) {
         rnew=r._transpose()*r;
         if (sqrt(rnew)< threshold){
           double diff = sqrt(rnew).toDouble();
-          logstream(LOG_INFO)<<" Conjugate gradient converged in iteration "<<i<<" to an accuracy of "  << diff << std::endl; 
+          logstream(LOG_INFO)<<" Conjugate gradient converged in iteration "<<i<<" to an accuracy of "  << diff << std::endl;
           break;
         }
         p=r+(rnew/rsold)*p;
@@ -334,7 +334,7 @@ int main(int argc,  char *argv[]) {
      verify_values(unittest, ret.toDouble());
     }
   }
- 
+
 
   vec ret = fill_output(&core.graph(), matrix_info, CG_X);
   write_output_vector(datafile + "x.out", format, ret, false);

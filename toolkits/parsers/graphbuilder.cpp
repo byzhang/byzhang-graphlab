@@ -1,5 +1,5 @@
-/**  
- * Copyright (c) 2009 Carnegie Mellon University. 
+/**
+ * Copyright (c) 2009 Carnegie Mellon University.
  *     All rights reserved.
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
@@ -74,10 +74,10 @@ struct vertex_data2 {
 
   void add_self_edge(double value) { }
 
-  void set_val(double value, int field_type) { 
+  void set_val(double value, int field_type) {
   }
   //only one output for jacobi - solution x
-  double get_output(int field_type){ 
+  double get_output(int field_type) const {
     return -1; //TODO
   }
 
@@ -150,16 +150,16 @@ sijmyRRfkwl XtqJaHYFEPqbZqNGPCr 050803 000000 68
 struct stringzipparser_update :
    public graphlab::iupdate_functor<graph_type, stringzipparser_update>{
    void operator()(icontext_type& context) {
-    
+
    std::string dir = context.get_global<std::string>("PATH");
    int nodes = context.get_global<int>("NUM_NODES");
    std::string outdir = context.get_global<std::string>("OUTPATH");
 
     //open file
     vertex_data& vdata = context.vertex_data();
-    
-    edge_data2 edge; 
-    graph_type2 _graph; 
+
+    edge_data2 edge;
+    graph_type2 _graph;
     _graph.set_use_vcolor(false);
     _graph.resize(nodes);
 
@@ -167,13 +167,13 @@ struct stringzipparser_update :
     logstream(LOG_INFO)<<"Opening input file: " << dir << vdata.filename << std::endl;
     boost::iostreams::filtering_stream<boost::iostreams::input> fin;
     fin.push(boost::iostreams::gzip_decompressor());
-    fin.push(in_file);  
+    fin.push(in_file);
 
     char linebuf[256], buf1[256], buf2[256];
     char saveptr[1024];
     int line = 1;
     int lines = context.get_global<int>("LINES");
-   
+
     while(true){
       fin.getline(linebuf, 128);
       if (fin.eof())
@@ -199,7 +199,7 @@ struct stringzipparser_update :
        if (from == DUMMY && to == DUMMY) //placeholder for matrix market size, to be done later
            continue;
        _graph.add_edge(from- 1, to - 1, edge);  //traslate edge offset to start from zero
-       //_graph.add_edge(to, from, edge); 
+       //_graph.add_edge(to, from, edge);
 
       line++;
       total_lines++;
@@ -209,7 +209,7 @@ struct stringzipparser_update :
       if (lines && line>=lines)
 	 break;
 
-    } 
+    }
 
 
    logstream(LOG_INFO) <<mytime.current_time() << ") Finished parsing total of " << line << " lines in file " << vdata.filename << endl;
@@ -239,7 +239,7 @@ public:
   accumulator() {}
   void operator()(icontext_type& context) {
   }
-  void operator+=(const accumulator& other) { 
+  void operator+=(const accumulator& other) {
   }
   void finalize(iglobal_context_type& context) {
   }
@@ -250,7 +250,7 @@ public:
 
 
 int main(int argc,  char *argv[]) {
-  
+
   global_logger().set_log_level(LOG_INFO);
   global_logger().set_log_to_console(true);
 
@@ -270,7 +270,7 @@ int main(int argc,  char *argv[]) {
   clopts.add_positional("data");
   clopts.attach_option("format", &format, format, "matrix format");
   clopts.attach_option("debug", &debug, debug, "Display debug output.");
-  clopts.attach_option("unittest", &unittest, unittest, 
+  clopts.attach_option("unittest", &unittest, unittest,
 		       "unit testing 0=None, 1=3x3 matrix");
   clopts.attach_option("lines", &lines, lines, "limit number of read lines to XX");
   clopts.attach_option("quick", &quick, quick, "quick mode");
@@ -288,11 +288,11 @@ int main(int argc,  char *argv[]) {
 
   logstream(LOG_WARNING)
     << "Eigen detected. (This is actually good news!)" << std::endl;
-  logstream(LOG_INFO) 
-    << "GraphLab Linear solver library code by Danny Bickson, CMU" 
-    << std::endl 
-    << "Send comments and bug reports to danny.bickson@gmail.com" 
-    << std::endl 
+  logstream(LOG_INFO)
+    << "GraphLab Linear solver library code by Danny Bickson, CMU"
+    << std::endl
+    << "Send comments and bug reports to danny.bickson@gmail.com"
+    << std::endl
     << "Currently implemented algorithms are: Gaussian Belief Propagation, "
     << "Jacobi method, Conjugate Gradient" << std::endl;
 
@@ -316,17 +316,17 @@ int main(int argc,  char *argv[]) {
 
   std::cout << "Schedule all vertices" << std::endl;
   core.schedule_all(stringzipparser_update());
- 
+
   //accumulator acum;
   //core.add_sync("sync", acum, sync_interval);
-  core.add_global("LINES", lines); 
+  core.add_global("LINES", lines);
   core.add_global("PATH", dir);
   core.add_global("OUTPATH", outdir);
   core.add_global("NUM_NODES", numnodes);
 
 
   double runtime= core.start();
- 
+
   std::cout << "Finished in " << runtime << std::endl;
   std::cout << "Total number of edges: " << self_edges << std::endl;
    return EXIT_SUCCESS;

@@ -1,5 +1,5 @@
-/**  
- * Copyright (c) 2009 Carnegie Mellon University. 
+/**
+ * Copyright (c) 2009 Carnegie Mellon University.
  *     All rights reserved.
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
@@ -88,21 +88,21 @@ struct vertex_data {
   real_type prev_mean; //  mean value from previous round (for convergence detection)
   real_type prev_prec; //precision value from previous round (for convergence detection)
 */
-  vertex_data(){ 
+  vertex_data(){
      pvec = zeros(GABP_MAX_FIELD);
      pvec[GABP_PREV_MEAN] = 1000;
    };
-  
+
   void add_self_edge(double value) { A_ii = value; }
 
-  void set_val(double value, int field_type) { 
- 
+  void set_val(double value, int field_type) {
+
     if (field_type == GABP_PRIOR_PREC)
       A_ii = value;
     else
       pvec[field_type] = value;
  }
-  double get_output(int field_type){ 
+  double get_output(int field_type) const {
     return pvec[field_type];
   }
 
@@ -131,7 +131,7 @@ struct gabp_update :
     vertex_data& vdata = context.vertex_data();
     const edge_list_type out_edges = context.out_edges();
     const edge_list_type in_edges = context.in_edges();
-    
+
     //store last round values
     vdata.pvec[GABP_PREV_MEAN] = vdata.pvec[GABP_CUR_MEAN];
     vdata.pvec[GABP_PREV_PREC] = vdata.pvec[GABP_CUR_PREC];
@@ -148,19 +148,19 @@ struct gabp_update :
                 << " u=" << vdata.pvec[GABP_Y]
                 << std::endl;
     }
-    
+
     //accumlate all messages (the inner summation in section 4 of Algorithm 1)
     for(size_t i = 0; i < in_edges.size(); i++) {
       const edge_data& edata = context.edge_data(in_edges[i]);
       mu_i += edata.mean;
       J_i +=  edata.prec;
     }
-    
+
     if (debug) {
       std::cout << context.vertex_id() << ") summing up all messages "
                 << mu_i << " " << J_i << std::endl;
     }
-    
+
     // optional support for null variances
     if (support_null_variance && J_i == 0){
       vdata.pvec[GABP_CUR_MEAN] = mu_i;
@@ -172,21 +172,21 @@ struct gabp_update :
       vdata.pvec[GABP_CUR_PREC] = J_i;
     }
     assert(vdata.pvec[GABP_CUR_MEAN] != NAN);
-    
+
     /* SEND new value and schedule neighbors */
     for(size_t i = 0; i < in_edges.size(); ++i) {
       assert(in_edges[i].source() == out_edges[i].target());
       edge_data& in_edge = context.edge_data(in_edges[i]);
       edge_data& out_edge = context.edge_data(out_edges[i]);
       //graphlab::vertex_id_type target = context.target(outedgeid[i]);
-      
+
       //substruct the sum of message sent from node j
       const real_type mu_i_j = mu_i - in_edge.mean;
       const real_type J_i_j  = J_i - in_edge.prec;
-      
+
       if (!support_null_variance)  assert(J_i_j != 0);
       assert(out_edge.weight != 0);
-      
+
       if (support_null_variance && J_i_j == 0){
         out_edge.mean = 0;
         out_edge.prec = 0;
@@ -215,7 +215,7 @@ class aggregator :
 private:
   real_type relative_norm;
 public:
-  aggregator() : 
+  aggregator() :
     relative_norm(0) { }
   void operator()(icontext_type& context) {
     const vertex_data& vdata = context.const_vertex_data();
@@ -223,7 +223,7 @@ public:
     if (debug)
 	std::cout << "relative norm: " <<relative_norm << std::endl;
   }
-  void operator+=(const aggregator& other) { 
+  void operator+=(const aggregator& other) {
     relative_norm += other.relative_norm;
   }
   void finalize(iglobal_context_type& context) {
@@ -232,7 +232,7 @@ public:
     // write the final result into the shared data table
     context.set_global("RELATIVE_NORM", relative_norm);
     const real_type threshold = context.get_global<real_type>("THRESHOLD");
-    if(relative_norm < threshold) 
+    if(relative_norm < threshold)
       context.terminate();
   }
 }; // end of  aggregator
@@ -242,7 +242,7 @@ public:
 
 
 int main(int argc,  char *argv[]) {
-  
+
   global_logger().set_log_level(LOG_INFO);
   global_logger().set_log_to_console(true);
 
@@ -266,14 +266,14 @@ int main(int argc,  char *argv[]) {
   clopts.attach_option("format", &format, format, "matrix format");
   clopts.attach_option("debug", &debug, debug, "Verbose mode");
   clopts.attach_option("debug_conv_fix", &debug_conv_fix, debug_conv_fix, "Verbose mode for convergence fix");
-  clopts.attach_option("syncinterval", 
-                       &sync_interval, sync_interval, 
+  clopts.attach_option("syncinterval",
+                       &sync_interval, sync_interval,
                        "sync interval (number of update functions before convergen detection");
-  clopts.attach_option("regularization", &regularization, regularization, 
+  clopts.attach_option("regularization", &regularization, regularization,
 	               "regularization added to the main diagonal");
-  clopts.attach_option("unittest", &unittest, unittest, 
+  clopts.attach_option("unittest", &unittest, unittest,
 		       "unit testing 0=None, 1=3x3 matrix");
-  clopts.attach_option("support_null_variance", &support_null_variance, 
+  clopts.attach_option("support_null_variance", &support_null_variance,
 		       support_null_variance, "support null precision");
   clopts.attach_option("final_residual", &final_residual, final_residual, "calc residual at the end (norm(Ax-b))");
   clopts.attach_option("fix_conv", &fix_conv, fix_conv, "Fix convergence, using XX outer loop iterations");
@@ -286,11 +286,11 @@ int main(int argc,  char *argv[]) {
 
   logstream(LOG_WARNING)
     << "Eigen detected. (This is actually good news!)" << std::endl;
-  logstream(LOG_INFO) 
-    << "GraphLab Linear solver library code by Danny Bickson, CMU" 
-    << std::endl 
-    << "Send comments and bug reports to danny.bickson@gmail.com" 
-    << std::endl 
+  logstream(LOG_INFO)
+    << "GraphLab Linear solver library code by Danny Bickson, CMU"
+    << std::endl
+    << "Send comments and bug reports to danny.bickson@gmail.com"
+    << std::endl
     << "Currently implemented algorithms are: Gaussian Belief Propagation, "
     << "Jacobi method, Conjugate Gradient" << std::endl;
 
@@ -306,12 +306,12 @@ int main(int argc,  char *argv[]) {
     prec = [    0.1996 0.2474 0.2116]';
  */
     datafile = "A_gabp"; yfile = "y"; xfile = "x_gabp"; sync_interval = 120;
-    clopts.set_scheduler_type("sweep(max_iterations=100,ordering=ascending,strict=true)");   
+    clopts.set_scheduler_type("sweep(max_iterations=100,ordering=ascending,strict=true)");
   }
   //./gabp --data=A_gabp --yfile=y --fix_conv=10 --regularization=1 --scheduler="sweep(max_iterations=100,ordering=ascending,strict=true)"
   else if (unittest == 2){
     datafile = "A_gabp"; yfile = "y"; xfile = "x_gabp"; sync_interval = 120; fix_conv = 10; regularization = 1;
-    clopts.set_scheduler_type("sweep(max_iterations=100,ordering=ascending,strict=true)");   
+    clopts.set_scheduler_type("sweep(max_iterations=100,ordering=ascending,strict=true)");
   }
 
   // Create a core
@@ -328,22 +328,22 @@ int main(int argc,  char *argv[]) {
   if (xfile.size() > 0){
     std::cout << "Load x values" << std::endl;
     load_vector(xfile, format, matrix_info, core.graph(), GABP_REAL_X, true, zero);
-  }  
+  }
 
   std::cout << "Schedule all vertices" << std::endl;
   core.schedule_all(gabp_update());
 
   if (sync_interval < core.graph().num_vertices()){
-    sync_interval = core.graph().num_vertices(); 
-    logstream(LOG_WARNING) << "Sync interval is lower than the number of nodes: setting sync interval to " 
+    sync_interval = core.graph().num_vertices();
+    logstream(LOG_WARNING) << "Sync interval is lower than the number of nodes: setting sync interval to "
 			   << sync_interval << std::endl;
   }
-   
+
 
   aggregator acum;
   core.add_aggregator("sync", acum, sync_interval);
   core.add_global("RELATIVE_NORM", double(0));
-  core.add_global("THRESHOLD", threshold); 
+  core.add_global("THRESHOLD", threshold);
 
   math_info mi;
   graphlab::core<graph_type, Axb> tmp_core;
@@ -356,7 +356,7 @@ int main(int argc,  char *argv[]) {
   DistVec old_b(matrix_info, GABP_OLD_Y, true, "old_b");
   DistDouble pnorm;
   vec xj;
-   
+
   int outer_iterations = 1;
   if (fix_conv > 0){
     outer_iterations = fix_conv;
@@ -389,7 +389,7 @@ int main(int argc,  char *argv[]) {
     else xj = x.to_vec();
     if (debug_conv_fix){
       PRINT_VEC(xj);
-      PRINT_VEC(x); 
+      PRINT_VEC(x);
     }
    }
 
@@ -398,7 +398,7 @@ int main(int argc,  char *argv[]) {
        x = xj;
       regularization = 0;
       b = old_b;
-    } 
+    }
     p = A*x - b;
     DistDouble ret = norm(p);
     logstream(LOG_INFO) << "Solution converged to residual: " << ret.toDouble() << std::endl;
@@ -407,7 +407,7 @@ int main(int argc,  char *argv[]) {
     else if (unittest == 2)
       assert(ret.toDouble() < 1e-5);
   }
- 
+
   write_output_vector(datafile + ".curmean.out", format, xj, false, "GraphLab linear solver library. vector x, as computed by GaBP, includes the solution x = inv(A)*y");
 
   vec prec = fill_output(&core.graph(), matrix_info, GABP_CUR_PREC);

@@ -1,5 +1,5 @@
-/**  
- * Copyright (c) 2009 Carnegie Mellon University. 
+/**
+ * Copyright (c) 2009 Carnegie Mellon University.
  *     All rights reserved.
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
@@ -48,10 +48,10 @@ struct vertex_data {
 
   void add_self_edge(double value) { }
 
-  void set_val(double value, int field_type) { 
+  void set_val(double value, int field_type) {
   }
   //only one output for jacobi - solution x
-  double get_output(int field_type){ 
+  double get_output(int field_type) const {
     return -1;
   }
 }; // end of vertex_data
@@ -70,7 +70,7 @@ graph_type * reference_graph = NULL;
 
 
 int main(int argc,  char *argv[]) {
-  
+
   global_logger().set_log_level(LOG_INFO);
   global_logger().set_log_to_console(true);
 
@@ -85,21 +85,21 @@ int main(int argc,  char *argv[]) {
   int reference = 0;
   std::string list_dir = "/usr2/bickson/daily.sorted/";
   std::string dir_path = "/usr2/bickson/bin.graphs/";
-  std::string out_dir = "/usr0/bickson/"; 
- 
+  std::string out_dir = "/usr0/bickson/";
+
   clopts.attach_option("data", &datafile, datafile,
                        "matrix A input file");
   clopts.add_positional("data");
   clopts.attach_option("format", &format, format, "matrix format");
   clopts.attach_option("lineformat", &lineformat, lineformat, "matrix line format");
-  
+
   clopts.attach_option("debug", &debug, debug, "Display debug output.");
-  clopts.attach_option("unittest", &unittest, unittest, 
+  clopts.attach_option("unittest", &unittest, unittest,
 		       "unit testing 0=None, 1=TBD");
-  clopts.attach_option("nodes", &nodes, nodes, "number of nodes"); 
+  clopts.attach_option("nodes", &nodes, nodes, "number of nodes");
   clopts.attach_option("gzip", &gzip, gzip, "gzipped input file?");
   clopts.attach_option("filter", & filter, filter, "Filter - parse files starting with prefix");
-  clopts.attach_option("references", &reference, reference, "reference - why day to compare to?"); 
+  clopts.attach_option("references", &reference, reference, "reference - why day to compare to?");
   clopts.attach_option("list_dir", &list_dir, list_dir, "directory with a list of file names to parse");
   clopts.attach_option("dir_path", &dir_path, dir_path, "actual directory where files are found");
   clopts.attach_option("outdir", &out_dir, out_dir, "output dir");
@@ -112,7 +112,7 @@ int main(int argc,  char *argv[]) {
 
   std::cout << "Load graph" << std::endl;
   nodes = 121408372;
-    
+
   multigraph_type multigraph;
   multigraph.load(list_dir, dir_path, filter, true);
 
@@ -128,7 +128,7 @@ int main(int argc,  char *argv[]) {
     uint * hist = histogram(edge_count, reference_graph->num_edges(), 29);
    logstream(LOG_INFO)<<"Historgram of 28 edges is: " << hist[28] << endl;
     gzip_out_file(out_dir + ".hist.gz");
-     
+
    boost::unordered_map<uint, std::string> nodeid2hash;
    nodeid2hash.rehash(nodes);
    load_map_from_file(nodeid2hash, out_dir + ".reverse.map");
@@ -136,14 +136,14 @@ int main(int argc,  char *argv[]) {
    assert(nodeid2hash.size() == (uint)nodes);
 
    boost::unordered_map<std::string, bool> edges_in_28;
-   int cnt =0; 
+   int cnt =0;
    int found = 0;
    for (int i=0; i< (int)reference_graph->num_vertices(); i++){
       edge_list edges = reference_graph->out_edges(i);
       for (int j=0; j < (int)edges.size(); j++){
         if (edge_count[edges[j].offset()] == 28){
           //fout << no
-          //deid2hash[edges[j].source()] << " " << nodeid2hash[edges[j].target()] << endl;    
+          //deid2hash[edges[j].source()] << " " << nodeid2hash[edges[j].target()] << endl;
           std::string srcid = nodeid2hash[edges[j].source()+1];
           std::string dstid = nodeid2hash[edges[j].target()+1];
 	  assert(srcid != dstid);
@@ -157,7 +157,7 @@ int main(int argc,  char *argv[]) {
           found++;
         }
         cnt++;
-      }     
+      }
    }
    logstream(LOG_INFO) << "Found " << found << " edges with 28 days" << endl;
    assert(edges_in_28.size() == (uint)found);

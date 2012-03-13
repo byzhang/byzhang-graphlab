@@ -1,5 +1,5 @@
-/**  
- * Copyright (c) 2009 Carnegie Mellon University. 
+/**
+ * Copyright (c) 2009 Carnegie Mellon University.
  *     All rights reserved.
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
@@ -23,10 +23,10 @@
 
 /**
  * Also contains code that is Copyright 2011 Yahoo! Inc.  All rights
- * reserved.  
+ * reserved.
  *
  * Contributed under the iCLA for:
- *    Joseph Gonzalez (jegonzal@yahoo-inc.com) 
+ *    Joseph Gonzalez (jegonzal@yahoo-inc.com)
  *
  */
 
@@ -81,14 +81,14 @@
 
 
 #include <graphlab/macros_def.hpp>
-namespace graphlab { 
+namespace graphlab {
 
 
   // CLASS GRAPH ==============================================================>
   /**
      \brief The GraphLab primary Graph container templatized over the
      vertex and edge types.
-    
+
      Every vertex and edge in the graph is assigned a unique integer
      ID.  The type of the vertex id is
      <code>graphlab::vertex_id_type</code> and the type of the edge id
@@ -101,20 +101,20 @@ namespace graphlab {
      as they may change in larger distributed systems.
 
      <h2> Graph Creation </h2>
-  
+
      Vertices and edges are added using the graph::add_vertex()
      and graph::add_edge() member functions:
-  
-  
+
+
      \code
-     vertex_id_type graph::add_vertex(const VertexData& vdata = VertexData()) 
-     edge_id_type graph::add_edge(vertex_id_type source, vertex_id_type target, 
-     const EdgeData& edata = EdgeData()) 
+     vertex_id_type graph::add_vertex(const VertexData& vdata = VertexData())
+     edge_id_type graph::add_edge(vertex_id_type source, vertex_id_type target,
+     const EdgeData& edata = EdgeData())
      \endcode
-  
+
      The functions return the id's of the added vertex and edge
      respectively.  An edge can only be added if both the source and
-     target vertex id's are already in the graph. Duplicate edges are not 
+     target vertex id's are already in the graph. Duplicate edges are not
      supported and may result in undefined behavior.
 
      The graph behaves like an STL container by storing a local copy of
@@ -127,7 +127,7 @@ namespace graphlab {
      id of the source vertex, while the out-edges are sorted by the id
      of the destination vertex. This allows for <i>O(log(n))</i> time
      look up of an edge id given its source and destination vertex.
-   
+
      However, this invariant is very expensive to maintain during graph
      consruction.  Therefore, the Graph datastructure allows the
      invariant to be violated during graph::add_vertex() or
@@ -136,7 +136,7 @@ namespace graphlab {
      the invariant.  The engine routines will defensively call
      graph::finalize() it is not first called by the user.
   */
-  
+
   template<typename VertexData, typename EdgeData>
   class graph {
   public:
@@ -144,41 +144,45 @@ namespace graphlab {
 
     /// The type of a vertex is a simple size_t
     typedef graphlab::vertex_id_type vertex_id_type;
-    
-    /// The type of an edge id 
+
+    /// The type of an edge id
     typedef graphlab::edge_id_type edge_id_type;
-    
-    /// Type for vertex colors 
+
+    /// Type for vertex colors
     typedef graphlab::vertex_color_type vertex_color_type;
-        
+
     /** The type of the vertex data stored in the graph */
     typedef VertexData vertex_data_type;
+    typedef VertexData& reference_vertex_data_type;
+    typedef const VertexData& const_reference_vertex_data_type;
 
     /** The type of the edge data stored in the graph */
     typedef EdgeData   edge_data_type;
+    typedef EdgeData&  reference_edge_data_type;
+    typedef const EdgeData&  const_reference_edge_data_type;
 
-    
+
     /** This class represents an edge with source() and target()*/
     class edge_type {
       const graph* graph_ptr;
       const edge_id_type _id;
-      edge_type(const graph* graph_ptr, 
-                const edge_id_type id) : 
-        graph_ptr(graph_ptr), _id(id) { }     
+      edge_type(const graph* graph_ptr,
+                const edge_id_type id) :
+        graph_ptr(graph_ptr), _id(id) { }
     public:
       // part of type interface for graph.
       enum edge_dir{OUTEDGE, INEDGE, NONE};
 
       edge_type() : graph_ptr(NULL), _id(-1) { }
       inline vertex_id_type source() const {
-        ASSERT_FALSE(empty()); 
-        ASSERT_LT(_id, graph_ptr->edges.size());
-        return graph_ptr->edges[_id].source(); 
-      }
-      inline vertex_id_type target() const { 
         ASSERT_FALSE(empty());
         ASSERT_LT(_id, graph_ptr->edges.size());
-        return graph_ptr->edges[_id].target(); 
+        return graph_ptr->edges[_id].source();
+      }
+      inline vertex_id_type target() const {
+        ASSERT_FALSE(empty());
+        ASSERT_LT(_id, graph_ptr->edges.size());
+        return graph_ptr->edges[_id].target();
       }
       bool empty() const { return graph_ptr == NULL; }
       friend class graph;
@@ -189,7 +193,7 @@ namespace graphlab {
     /** This class represents a lazy list of edge_type. */
     class edge_list_type {
     public:
-      struct edge_functor : 
+      struct edge_functor :
         public std::unary_function<edge_id_type, edge_type> {
         const graph* graph_ptr;
         edge_functor(const graph* graph_ptr) : graph_ptr(graph_ptr) { }
@@ -203,9 +207,9 @@ namespace graphlab {
     private:
       iterator begin_iter, end_iter;
     public:
-      edge_list_type(const graph* graph_ptr = NULL, 
-                     const edge_id_type* begin_iter = NULL, 
-                     const edge_id_type* end_iter = NULL) : 
+      edge_list_type(const graph* graph_ptr = NULL,
+                     const edge_id_type* begin_iter = NULL,
+                     const edge_id_type* end_iter = NULL) :
         begin_iter(begin_iter, edge_functor(graph_ptr)),
         end_iter(end_iter, edge_functor(graph_ptr)) { }
       size_t size() const { return end_iter - begin_iter; }
@@ -214,27 +218,27 @@ namespace graphlab {
       }
       const_iterator begin() const { return begin_iter; }
       const_iterator end() const { return end_iter; }
-      bool empty() const { return size() == 0; }  
+      bool empty() const { return size() == 0; }
     }; // end of class edge_list_type
 
 
   private:
 
-    /** Internal edge class  */   
+    /** Internal edge class  */
     class edge_info {
       vertex_id_type _source, _target;
       EdgeData _data;
     public:
       edge_info(vertex_id_type source = -1, vertex_id_type target = -1) :
         _source(source), _target(target) { }
-      edge_info(vertex_id_type source, vertex_id_type target, EdgeData data) : 
+      edge_info(vertex_id_type source, vertex_id_type target, EdgeData data) :
         _source(source), _target(target), _data(data) { }
       bool operator<(const edge_info& other) const {
-        return (_source < other._source) || 
-          (_source == other._source && _target < other._target); 
+        return (_source < other._source) ||
+          (_source == other._source && _target < other._target);
       }
       inline vertex_id_type source() const { return _source; }
-      inline vertex_id_type target() const { return _target; }   
+      inline vertex_id_type target() const { return _target; }
       inline EdgeData& data() { return _data; }
       inline const EdgeData& data() const { return _data; }
       void load(iarchive& arc) {
@@ -244,32 +248,32 @@ namespace graphlab {
         arc << _source << _target << _data;
       }
     }; // end of edge_info
-      
-      
-    // PRIVATE DATA MEMBERS ===================================================>    
+
+
+    // PRIVATE DATA MEMBERS ===================================================>
     /** The vertex data is simply a vector of vertex data */
     std::vector<VertexData> vertices;
 
     /** The edge data is a vector of edges where each edge stores its
         source, destination, and data. */
     std::vector<edge_info> edges;
-    
-    /** A map from src_vertex -> dest_vertex -> edge index */   
+
+    /** A map from src_vertex -> dest_vertex -> edge index */
     std::vector< std::vector<edge_id_type> >  in_edge_ids;
-    
-    /** A map from src_vertex -> dest_vertex -> edge index */   
+
+    /** A map from src_vertex -> dest_vertex -> edge index */
     std::vector< std::vector<edge_id_type> >  out_edge_ids;
-    
+
     /** The vertex colors specified by the user. **/
-    std::vector< vertex_color_type > vcolors;  
-    
+    std::vector< vertex_color_type > vcolors;
+
     /** Mark whether the graph is finalized.  Graph finalization is a
         costly procedure but it can also dramatically improve
         performance. */
     bool finalized;
-    
 
-   
+
+
   public:
 
     // CONSTRUCTORS ============================================================>
@@ -277,7 +281,7 @@ namespace graphlab {
     graph() : finalized(true) {  }
 
     //! Create a graph with nverts vertices.
-    graph(size_t nverts) : 
+    graph(size_t nverts) :
     vertices(nverts), in_edge_ids(nverts), out_edge_ids(nverts), vcolors(nverts),
     finalized(true)  { }
 
@@ -293,56 +297,56 @@ namespace graphlab {
 
     /**
      * Finalize a graph by sorting its edges to maximize the
-     * efficiency of graphlab.  
-     * This function takes O(|V|log(degree)) time and will 
+     * efficiency of graphlab.
+     * This function takes O(|V|log(degree)) time and will
      * fail if there are any duplicate edges.
      * This is also automatically invoked by the engine at
      * start.
      */
     void finalize();
-            
+
     /** \brief Get the number of vertices */
-    size_t num_vertices() const { return vertices.size(); } 
+    size_t num_vertices() const { return vertices.size(); }
 
     /** \brief Get the number of vertices local to this machine */
-    size_t local_vertices() const { return vertices.size(); } 
+    size_t local_vertices() const { return vertices.size(); }
 
     /** \brief Get the number of edges */
     size_t num_edges() const { return edges.size(); }
 
 
-    /** \brief Finds an edge.  
+    /** \brief Finds an edge.
      *
      * The value of the first element of the pair will be true if an
      *  edge from src to target is found and false otherwise. If the
      *  edge is found, the edge ID is returned in the second element
-     *  of the pair. 
+     *  of the pair.
      */
-    edge_type find(const vertex_id_type source, 
-                   const vertex_id_type target) const;    
+    edge_type find(const vertex_id_type source,
+                   const vertex_id_type target) const;
 
 
     //! Return the edge in the opposite direction
     edge_type reverse_edge(const edge_type& edge) const;
 
-    /** 
+    /**
      * \brief Creates a vertex containing the vertex data and returns
      * the id of the new vertex id. Vertex ids are assigned in
      * increasing order with the first vertex having id 0.
      */
     vertex_id_type add_vertex(const VertexData& vdata = VertexData() );
 
-    /** 
+    /**
      * \brief Add additional vertices up to provided num_vertices.  This will
      * fail if resizing down.
      */
-    void resize(size_t num_vertices );    
-    
+    void resize(size_t num_vertices );
+
     /**
      * \brief Creates an edge connecting vertex source to vertex target.  Any
      * existing data will be cleared.
      */
-    void add_edge(vertex_id_type source, vertex_id_type target, 
+    void add_edge(vertex_id_type source, vertex_id_type target,
                   const EdgeData& edata = EdgeData());
 
     void add_block_edges(std::vector<vertex_id_type> sourceArray, std::vector<vertex_id_type> targetArray, std::vector<EdgeData> edata);
@@ -351,39 +355,39 @@ namespace graphlab {
 
     /** \brief Returns the vertex color of a vertex.
         Only valid if compute_coloring() is called first.*/
-    vertex_color_type& color(vertex_id_type vertex);
+    void set_color(vertex_id_type vertex, const vertex_color_type&);
 
     /** \brief Returns the vertex color of a vertex.
         Only valid if compute_coloring() is called first.*/
-    const vertex_color_type& color(vertex_id_type vid) const;        
-    
+    const vertex_color_type& color(vertex_id_type vid) const;
+
     /** \brief Returns a reference to the data stored on the vertex v. */
     VertexData& vertex_data(vertex_id_type v);
-    
+
     /** \brief Returns a constant reference to the data stored on the vertex v */
     const VertexData& vertex_data(vertex_id_type v) const;
 
     /** \brief Returns a reference to the data stored on the edge source->target. */
     EdgeData& edge_data(vertex_id_type source, vertex_id_type target);
-    
+
     edge_id_type edge_id(const edge_type& edge) const {
       return edge._id;
     }
-    
+
     /** \brief Returns a constant reference to the data stored on the
         edge source->target */
-    const EdgeData& edge_data(vertex_id_type source, 
-                              vertex_id_type target) const;
+    const EdgeData& edge_data(vertex_id_type source,
+                                    vertex_id_type target) const;
 
     /** \brief Returns a reference to the data stored on the edge e */
     EdgeData& edge_data(const edge_type& edge);
-    
+
     /** \brief Returns a constant reference to the data stored on the edge e */
     const EdgeData& edge_data(const edge_type& edge) const;
 
     //! Estimate the actual size in memory of this graph structure
     size_t estimate_sizeof() const;
-       
+
     //! Get all the edge which edge.target() == v
     edge_list_type in_edges(const vertex_id_type v) const;
 
@@ -396,7 +400,7 @@ namespace graphlab {
     //! Get the number of edges which edge.source() == v
     size_t num_out_edges(const vertex_id_type v) const;
 
-   
+
     /** \brief Load the graph from an archive */
     void load(iarchive& arc);
 
@@ -406,10 +410,10 @@ namespace graphlab {
     /** \brief Load the graph from a file */
     void load(const std::string& filename);
 
-    /** \brief save the graph to the file given by the filename */    
+    /** \brief save the graph to the file given by the filename */
     void save(const std::string& filename) const;
-    
-  private:    
+
+  private:
 
     // PRIVATE HELPERS =========================================================>
     struct edge_id_less_functor {
@@ -442,14 +446,14 @@ namespace graphlab {
 
 
   //////////////////////////////////////////////////////////////////////////////
-  //// Implementation 
+  //// Implementation
 
   template<typename VertexData, typename EdgeData>
   void graph<VertexData, EdgeData>::clear() {
     vertices.clear(); edges.clear(); in_edge_ids.clear();
     out_edge_ids.clear(); vcolors.clear();  finalized = true;
   } // end of clear
-  
+
 
   template<typename VertexData, typename EdgeData>
   void graph<VertexData, EdgeData>::clear_reserve() {
@@ -464,11 +468,11 @@ namespace graphlab {
 
 
   template<typename VertexData, typename EdgeData>
-  void graph<VertexData, EdgeData>::finalize()  {   
+  void graph<VertexData, EdgeData>::finalize()  {
     // check to see if the graph is already finalized
     if(finalized) return;
     std::cout << "Start finalize.." << std::endl;
-    edge_id_less_functor edge_id_less(*this);      
+    edge_id_less_functor edge_id_less(*this);
     // Sort all in edges set
 #pragma omp parallel for
     for(ssize_t i = 0; i < ssize_t(in_edge_ids.size()); ++i) {
@@ -482,13 +486,13 @@ namespace graphlab {
           if(!edge_id_less(eset[j], eset[j+1])) {
             logstream(LOG_FATAL)
               << "Duplicate edge "
-              << "(" << edges[eset[j]].source() << ", " 
+              << "(" << edges[eset[j]].source() << ", "
               << edges[eset[j]].target() << ") "
               << "found!  GraphLab does not support graphs "
               << "with duplicate edges." << std::endl;
           }
         }
-      }  
+      }
     } // end of for loop
       // Sort all out edges sets
 #pragma omp parallel for
@@ -502,7 +506,7 @@ namespace graphlab {
           if(!edge_id_less(eset[j], eset[j+1])) {
             logstream(LOG_FATAL)
               << "Duplicate edge "
-              << "(" << edges[eset[j]].source() << ", " 
+              << "(" << edges[eset[j]].source() << ", "
               << edges[eset[j]].target() << ") "
               << "found!  GraphLab does not support graphs "
               << "with duplicate edges." << std::endl;
@@ -512,11 +516,11 @@ namespace graphlab {
     }
     finalized = true;
   } // End of finalize
-  
+
 
   template<typename VertexData, typename EdgeData>
-  typename graph<VertexData, EdgeData>::edge_type 
-  graph<VertexData, EdgeData>::find(const vertex_id_type source, 
+  typename graph<VertexData, EdgeData>::edge_type
+  graph<VertexData, EdgeData>::find(const vertex_id_type source,
                                     const vertex_id_type target) const {
     ASSERT_LT(source, in_edge_ids.size());
     ASSERT_LT(target, out_edge_ids.size());
@@ -544,24 +548,24 @@ namespace graphlab {
     } else { // O( degree ) search ==========================================>
       // if there are few in edges at the target search there
       if(in_edge_ids[target].size() < out_edge_ids[source].size()) {
-        // linear search the in_edges at the target 
+        // linear search the in_edges at the target
         foreach(const edge_id_type& e, in_edge_ids[target]) {
-          if(edges[e].source() == source && edges[e].target() == target) 
+          if(edges[e].source() == source && edges[e].target() == target)
             return edge_type(this, e);
         }
         return edge_type();
       } else { // fewer out edges at the source
         // linear search the out_edges at the source
         foreach(const edge_id_type& e, out_edge_ids[source]) {
-          if(edges[e].source() == source && edges[e].target() == target) 
+          if(edges[e].source() == source && edges[e].target() == target)
             return edge_type(this, e);
         }
         return edge_type();
       }
-    } // End of else 
+    } // End of else
   } // end of find
-  
-  // edge_type find(const vertex_id_type source, 
+
+  // edge_type find(const vertex_id_type source,
   //                const vertex_id_type target) const {
   //   ASSERT_LT(source, in_edge_ids.size());
   //   ASSERT_LT(target, out_edge_ids.size());
@@ -573,27 +577,27 @@ namespace graphlab {
   //   typedef std::vector<edge_id_type>::const_iterator iterator_type;
   //   // if out edges is a smaller set
   //   if(out_edge_ids[source].size() < in_edge_ids[target].size()) {
-  //     const iterator_type iter = finalized? 
-  //       std::lower_bound(out_edge_ids[source].begin(), out_edge_ids[source].end(), 
+  //     const iterator_type iter = finalized?
+  //       std::lower_bound(out_edge_ids[source].begin(), out_edge_ids[source].end(),
   //                        less_functor) :
-  //       std::find(out_edge_ids[source].begin(), out_edge_ids[source].end(), 
+  //       std::find(out_edge_ids[source].begin(), out_edge_ids[source].end(),
   //                 less_functor);
   //     if(iter == out_edge_ids[source].end()) return edge_type();
   //     else return edge_type(this, *iter);
   //   } else {
-  //     const iterator_type iter = finalized? 
-  //       std::lower_bound(in_edge_ids[target].begin(), in_edge_ids[target].end(), 
+  //     const iterator_type iter = finalized?
+  //       std::lower_bound(in_edge_ids[target].begin(), in_edge_ids[target].end(),
   //                        less_functor) :
-  //       std::find(in_edge_ids[target].begin(), in_edge_ids[target].end(), 
+  //       std::find(in_edge_ids[target].begin(), in_edge_ids[target].end(),
   //                 less_functor);
   //     if(iter == in_edge_ids[target].end()) return edge_type();
   //     else return edge_type(this, *iter);
   //   }
   // } // end of find
-  
+
 
   template<typename VertexData, typename EdgeData>
-  typename graph<VertexData, EdgeData>::edge_type 
+  typename graph<VertexData, EdgeData>::edge_type
   graph<VertexData, EdgeData>::reverse_edge(const edge_type& edge) const {
     ASSERT_EQ(edge.graph_ptr, this);
     return find(edge.target(), edge.source());
@@ -601,7 +605,7 @@ namespace graphlab {
 
 
   template<typename VertexData, typename EdgeData>
-  typename graph<VertexData, EdgeData>::vertex_id_type 
+  typename graph<VertexData, EdgeData>::vertex_id_type
   graph<VertexData, EdgeData>::add_vertex(const VertexData& vdata) {
     vertices.push_back(vdata);
     // Resize edge maps
@@ -610,8 +614,8 @@ namespace graphlab {
     vcolors.push_back(vertex_color_type()); // resize(vertices.size());
     return (vertex_id_type)vertices.size() - 1;
   } // End of add vertex;
-  
-  
+
+
   template<typename VertexData, typename EdgeData>
   void graph<VertexData, EdgeData>::resize(size_t num_vertices ) {
     ASSERT_GE(num_vertices, vertices.size());
@@ -621,30 +625,30 @@ namespace graphlab {
     in_edge_ids.resize(vertices.size());
     vcolors.resize(vertices.size());
   } // End of resize
-  
-  
-  
+
+
+
   /**
    * \brief Creates an edge connecting vertex source to vertex target.  Any
    * existing data will be cleared.
    */
   template<typename VertexData, typename EdgeData>
-  void graph<VertexData, EdgeData>:: 
-  add_edge(vertex_id_type source, vertex_id_type target, 
+  void graph<VertexData, EdgeData>::
+  add_edge(vertex_id_type source, vertex_id_type target,
            const EdgeData& edata) {
-    if ( source >= vertices.size() 
+    if ( source >= vertices.size()
          || target >= vertices.size() ) {
-      logstream(LOG_FATAL) 
+      logstream(LOG_FATAL)
         << "Attempting add_edge (" << source
         << " -> " << target
-        << ") when there are only " << vertices.size() 
+        << ") when there are only " << vertices.size()
         << " vertices" << std::endl;
       ASSERT_MSG(source < vertices.size(), "Invalid source vertex!");
       ASSERT_MSG(target < vertices.size(), "Invalid target vertex!");
     }
     if(source == target) {
-      logstream(LOG_FATAL) 
-        << "Attempting to add self edge (" 
+      logstream(LOG_FATAL)
+        << "Attempting to add self edge ("
         << source << " -> " << target <<  ").  "
         << "This operation is not permitted in GraphLab!" << std::endl;
       ASSERT_MSG(source != target, "Attempting to add self edge!");
@@ -674,7 +678,7 @@ namespace graphlab {
   } // End of add edge
 
   template<typename VertexData, typename EdgeData>
-  void graph<VertexData, EdgeData>:: 
+  void graph<VertexData, EdgeData>::
   add_block_edges(std::vector<vertex_id_type> sourceArray, std::vector<vertex_id_type> targetArray, std::vector<EdgeData> edata) {
     for (size_t i = 0; i < sourceArray.size(); ++i) {
       add_edge(sourceArray[i], targetArray[i], edata[i]);
@@ -684,14 +688,14 @@ namespace graphlab {
 
 
   template<typename VertexData, typename EdgeData>
-  typename graph<VertexData, EdgeData>::vertex_color_type& 
-  graph<VertexData, EdgeData>::color(vertex_id_type vertex) {
+  void graph<VertexData, EdgeData>::set_color(vertex_id_type vertex,
+      const typename graph<VertexData, EdgeData>::vertex_color_type& data) {
     ASSERT_LT(vertex, vertices.size());
-    return vcolors[vertex];
+    vcolors[vertex] = data;
   } // end of coloro
 
   template<typename VertexData, typename EdgeData>
-  const typename graph<VertexData, EdgeData>::vertex_color_type& 
+  const typename graph<VertexData, EdgeData>::vertex_color_type&
   graph<VertexData, EdgeData>::color(vertex_id_type vertex) const {
     ASSERT_LT(vertex, vertices.size());
     return vcolors[vertex];
@@ -705,7 +709,7 @@ namespace graphlab {
     ASSERT_LT(v, vertices.size());
     return vertices[v];
   } // end of data(v)
-    
+
   template<typename VertexData, typename EdgeData>
   const VertexData& graph<VertexData, EdgeData>::
   vertex_data(vertex_id_type v) const {
@@ -721,14 +725,14 @@ namespace graphlab {
     const edge_type edge = find(source, target);
     // We must find the edge!
     if(edge.empty()) {
-      logstream(LOG_FATAL) 
+      logstream(LOG_FATAL)
         << "Edge " << source << "-->" << target << " not found!" << std::endl;
     }
     // the edge id should be valid!
     ASSERT_LT(edge._id, edges.size());
     return edges[edge._id].data();
   } // end of edge_data(u,v)
-  
+
   template<typename VertexData, typename EdgeData>
   const EdgeData& graph<VertexData, EdgeData>::
   edge_data(vertex_id_type source, vertex_id_type target) const {
@@ -737,21 +741,21 @@ namespace graphlab {
     const edge_type edge = find(source, target);
     // We must find the edge!
     if(edge.empty()) {
-      logstream(LOG_FATAL) 
+      logstream(LOG_FATAL)
         << "Edge " << source << "-->" << target << " not found!" << std::endl;
     }
     // the edge id should be valid!
     ASSERT_LT(edge._id, edges.size());
     return edges[edge._id].data();
   } // end of edge_data(u,v)
-  
+
   template<typename VertexData, typename EdgeData>
   EdgeData& graph<VertexData, EdgeData>::edge_data(const edge_type& edge) {
     ASSERT_EQ(edge.graph_ptr, this);
     ASSERT_LT(edge._id, edges.size());
     return edges[edge._id].data();
   } // end of edge_data(edge_type)
-  
+
   template<typename VertexData, typename EdgeData>
   const EdgeData& graph<VertexData, EdgeData>::edge_data(const edge_type& edge) const {
     ASSERT_EQ(edge.graph_ptr, this);
@@ -762,22 +766,22 @@ namespace graphlab {
   template<typename VertexData, typename EdgeData>
   size_t graph<VertexData,EdgeData>::estimate_sizeof() const {
     const size_t eid_size = sizeof(edge_id_type);
-    const size_t vlist_size = sizeof(vertices) + 
+    const size_t vlist_size = sizeof(vertices) +
       vertices.capacity() *sizeof(VertexData);
-    const size_t vcolor_size = sizeof(vcolors) + 
+    const size_t vcolor_size = sizeof(vcolors) +
       vcolors.capacity() * sizeof(vertex_color_type);
-    const size_t elist_size = sizeof(edges) + 
+    const size_t elist_size = sizeof(edges) +
       edges.capacity() * sizeof(edge_info);
-    const size_t inout_shell_size = sizeof(in_edge_ids) + 
-      in_edge_ids.capacity() * sizeof(std::vector<edge_id_type>) + 
-      sizeof(out_edge_ids) + 
+    const size_t inout_shell_size = sizeof(in_edge_ids) +
+      in_edge_ids.capacity() * sizeof(std::vector<edge_id_type>) +
+      sizeof(out_edge_ids) +
       out_edge_ids.capacity() * sizeof(std::vector<edge_id_type>);
     size_t inout_content_size = 0;
     foreach(std::vector<edge_id_type> eid_list, in_edge_ids) {
       inout_content_size += sizeof(eid_size) * eid_list.capacity();
     }
     inout_content_size  *= 2;
-    return vlist_size + vcolor_size + elist_size + inout_shell_size + 
+    return vlist_size + vcolor_size + elist_size + inout_shell_size +
       inout_content_size;
   } // end of estimate sizeof
 
@@ -786,7 +790,7 @@ namespace graphlab {
   typename graph<VertexData, EdgeData>::edge_list_type
   graph<VertexData,EdgeData>::in_edges(const vertex_id_type v) const {
     ASSERT_LT(v, in_edge_ids.size());
-    return edge_list_type(this, &(*(in_edge_ids[v].begin())), 
+    return edge_list_type(this, &(*(in_edge_ids[v].begin())),
                           &(*in_edge_ids[v].end()));
   } // end of in_edges
 
@@ -801,7 +805,7 @@ namespace graphlab {
   typename graph<VertexData, EdgeData>::edge_list_type
   graph<VertexData,EdgeData>::out_edges(const vertex_id_type v) const {
     ASSERT_LT(v, out_edge_ids.size());
-    return edge_list_type(this, &(*out_edge_ids[v].begin()), 
+    return edge_list_type(this, &(*out_edge_ids[v].begin()),
                           &(*out_edge_ids[v].end()));
   } // end of out_edges
 
@@ -815,7 +819,7 @@ namespace graphlab {
 
   template<typename VertexData, typename EdgeData>
   void graph<VertexData,EdgeData>::load(iarchive& arc) {
-    clear();    
+    clear();
     // read the vertices and colors
     arc >> vertices
         >> edges
@@ -835,7 +839,7 @@ namespace graphlab {
         << vcolors
         << finalized;
   } // end of save
-  
+
 
   template<typename VertexData, typename EdgeData>
   void graph<VertexData,EdgeData>::load(const std::string& filename) {
@@ -844,7 +848,7 @@ namespace graphlab {
     iarc >> *this;
     fin.close();
   } // end of load
-  
+
   template<typename VertexData, typename EdgeData>
   void graph<VertexData,EdgeData>::save(const std::string& filename) const {
     std::ofstream fout(filename.c_str());
@@ -875,7 +879,7 @@ namespace graphlab {
         } else if (first == last) {
           // Can't search further so we fail
           return -1;
-        } 
+        }
         // otherwise search further
         if(std::make_pair(source, target) <
            std::make_pair(mid_source, mid_target) ) {
@@ -889,7 +893,7 @@ namespace graphlab {
       }
       // We failed to find
       return -1;
-    } // end of binary search    
+    } // end of binary search
 
 
 
@@ -898,15 +902,15 @@ namespace graphlab {
   template<typename VertexData, typename EdgeData>
   std::ostream& operator<<(std::ostream& out,
                            const graph<VertexData, EdgeData>& graph) {
-    typedef typename graphlab::graph<VertexData, EdgeData>::vertex_id_type 
+    typedef typename graphlab::graph<VertexData, EdgeData>::vertex_id_type
       vertex_id_type;
-    typedef typename graphlab::graph<VertexData, EdgeData>::edge_id_type 
+    typedef typename graphlab::graph<VertexData, EdgeData>::edge_id_type
       edge_id_type;
     typedef typename graphlab::graph<VertexData, EdgeData>::edge_type
       edge_type;
     for(vertex_id_type vid = 0; vid < graph.num_vertices(); ++vid) {
       foreach(edge_type ewrapper, graph.out_edges(vid))
-        out << vid << ", " << ewrapper.target << '\n';      
+        out << vid << ", " << ewrapper.target << '\n';
     }
     return out;
   }

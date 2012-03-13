@@ -1,5 +1,5 @@
-/**  
- * Copyright (c) 2009 Carnegie Mellon University. 
+/**
+ * Copyright (c) 2009 Carnegie Mellon University.
  *     All rights reserved.
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
@@ -23,11 +23,13 @@
 
 
 
+#include <graphlab/graph/igraph.hpp>
 #include <graphlab/graph/graph.hpp>
 #include <graphlab/graph/graph_ops.hpp>
 #include <graphlab/graph/graph_partitioner.hpp>
 // #include <graphlab/graph/disk_graph.hpp>
 #include <graphlab/graph/graph2.hpp>
+#include <graphlab/graph/redis_graph.hpp>
 
 
 

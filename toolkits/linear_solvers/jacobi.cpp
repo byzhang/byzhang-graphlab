@@ -1,5 +1,5 @@
-/**  
- * Copyright (c) 2009 Carnegie Mellon University. 
+/**
+ * Copyright (c) 2009 Carnegie Mellon University.
  *     All rights reserved.
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
@@ -23,10 +23,10 @@
 
 /**
  * Functionality: The code solves the linear system Ax = b using
- * The Jacobi algorithm. (A is a square matrix). 
+ * The Jacobi algorithm. (A is a square matrix).
  * A assumed to be full column rank.  Algorithm is described
  * http://en.wikipedia.org/wiki/Jacobi_method
- * Written by Danny Bickson 
+ * Written by Danny Bickson
  */
 
 
@@ -59,17 +59,17 @@ struct vertex_data {
   double A_ii;
   //real_type y, Aii;
   //real_type pvec[JACOBI_X], pvec[JACOBI_REAL_X], pvec[JACOBI_PREV_X];
-  vertex_data(): A_ii(1) { //: y(0), Aii(1), pvec[JACOBI_X](0), pvec[JACOBI_REAL_X](0), 
-                 // pvec[JACOBI_PREV_X](-1) 
+  vertex_data(): A_ii(1) { //: y(0), Aii(1), pvec[JACOBI_X](0), pvec[JACOBI_REAL_X](0),
+                 // pvec[JACOBI_PREV_X](-1)
      pvec = zeros(data_size);
      pvec[JACOBI_PREV_X] = -1;
   }
   void add_self_edge(double value) { A_ii = value + regularization; }
 
-  void set_val(double value, int field_type) { 
+  void set_val(double value, int field_type) {
      pvec[field_type] = value;
-  }  
-  double get_output(int field_type){ return pvec[field_type]; }
+  }
+  double get_output(int field_type) const { return pvec[field_type]; }
 }; // end of vertex_data
 
 struct edge_data {
@@ -99,15 +99,15 @@ struct jacobi_update :
     assert(!std::isnan(x_i));
     const real_type A_ii = vdata.A_ii;
 
-    if (debug) 
-      std::cout << "entering node " << context.vertex_id() 
-                << " A_ii=" << A_ii 
+    if (debug)
+      std::cout << "entering node " << context.vertex_id()
+                << " A_ii=" << A_ii
                 << " pvec[JACOBI_PREV_X]=" << vdata.pvec[JACOBI_PREV_X]
                 << " y: " << vdata.pvec[JACOBI_Y] << std::endl;
-  
+
     for(size_t i = 0; i < out_edges.size(); ++i) {
       edge_data& out_edge = context.edge_data(out_edges[i]);
-      const vertex_data & other = 
+      const vertex_data & other =
         context.const_vertex_data(out_edges[i].target());
       double val = out_edge.weight * other.pvec[JACOBI_X];
       x_i = x_i - val;
@@ -115,8 +115,8 @@ struct jacobi_update :
     }
     assert(A_ii != 0);
     vdata.pvec[JACOBI_X] = x_i / A_ii;
-    assert(!std::isnan(vdata.pvec[JACOBI_X]));   
- 
+    assert(!std::isnan(vdata.pvec[JACOBI_X]));
+
     if (debug)
       std::cout << context.vertex_id()<< ") x_i: " << vdata.pvec[JACOBI_X] << std::endl;
 
@@ -134,8 +134,8 @@ class aggregator :
 private:
   double real_norm, relative_norm;
 public:
-  aggregator() : 
-    real_norm(0), 
+  aggregator() :
+    real_norm(0),
     relative_norm(0) { }
   void operator()(icontext_type& context) {
     const vertex_data& vdata = context.const_vertex_data();
@@ -146,9 +146,9 @@ public:
     if (debug)
 	std::cout << "Real_norm: " << real_norm << "relative norm: " <<relative_norm << std::endl;
   }
-  void operator+=(const aggregator& other) { 
+  void operator+=(const aggregator& other) {
     assert(!std::isnan(real_norm));
-    real_norm += other.real_norm; 
+    real_norm += other.real_norm;
     assert(!std::isnan(real_norm));
     relative_norm += other.relative_norm;
   }
@@ -161,7 +161,7 @@ public:
     context.set_global("REAL_NORM", real_norm);
     context.set_global("RELATIVE_NORM", relative_norm);
     const real_type threshold = context.get_global<real_type>("THRESHOLD");
-    if(relative_norm < threshold) 
+    if(relative_norm < threshold)
       context.terminate();
   }
 }; // end of  aggregator
@@ -173,7 +173,7 @@ void verify_values(int unittest, double residual){
 
 
 int main(int argc,  char *argv[]) {
-  
+
   global_logger().set_log_level(LOG_INFO);
   global_logger().set_log_to_console(true);
 
@@ -196,12 +196,12 @@ int main(int argc,  char *argv[]) {
   clopts.add_positional("threshold");
   clopts.attach_option("format", &format, format, "matrix format");
   clopts.attach_option("debug", &debug, debug, "Display debug output.");
-  clopts.attach_option("syncinterval", 
-                       &sync_interval, sync_interval, 
+  clopts.attach_option("syncinterval",
+                       &sync_interval, sync_interval,
                        "sync interval (number of update functions before convergen detection");
-  clopts.attach_option("regularization", &regularization, regularization, 
+  clopts.attach_option("regularization", &regularization, regularization,
 	               "regularization added to the main diagonal");
-  clopts.attach_option("unittest", &unittest, unittest, 
+  clopts.attach_option("unittest", &unittest, unittest,
 		       "unit testing 0=None, 1=3x3 matrix");
   clopts.attach_option("final_residual", &final_residual, final_residual, "calc residual at the end (norm(Ax-b))");
   clopts.attach_option("zero", &zero, zero, "Allow for zero edges (matrix entries)");
@@ -213,11 +213,11 @@ int main(int argc,  char *argv[]) {
 
   logstream(LOG_WARNING)
     << "Eigen detected. (This is actually good news!)" << std::endl;
-  logstream(LOG_INFO) 
-    << "GraphLab Linear solver library code by Danny Bickson, CMU" 
-    << std::endl 
-    << "Send comments and bug reports to danny.bickson@gmail.com" 
-    << std::endl 
+  logstream(LOG_INFO)
+    << "GraphLab Linear solver library code by Danny Bickson, CMU"
+    << std::endl
+    << "Send comments and bug reports to danny.bickson@gmail.com"
+    << std::endl
     << "Currently implemented algorithms are: Gaussian Belief Propagation, "
     << "Jacobi method, Conjugate Gradient" << std::endl;
 
@@ -247,28 +247,28 @@ int main(int argc,  char *argv[]) {
   load_vector(yfile, format, matrix_info, core.graph(), JACOBI_Y, false, zero);
   std::cout << "Load x values" << std::endl;
   load_vector(xfile, format, matrix_info, core.graph(), JACOBI_REAL_X, true, zero);
-  
+
 
   std::cout << "Schedule all vertices" << std::endl;
   core.schedule_all(jacobi_update());
 
   if (sync_interval < core.graph().num_vertices()){
-    sync_interval = core.graph().num_vertices(); 
-    logstream(LOG_WARNING) << "Sync interval is lower than the number of nodes: setting sync interval to " 
+    sync_interval = core.graph().num_vertices();
+    logstream(LOG_WARNING) << "Sync interval is lower than the number of nodes: setting sync interval to "
 			   << sync_interval << std::endl;
   }
- 
+
   aggregator acum;
   core.add_aggregator("sync", acum, sync_interval);
   core.add_global("REAL_NORM", double(0));
   core.add_global("RELATIVE_NORM", double(0));
-  core.add_global("THRESHOLD", threshold); 
- 
+  core.add_global("THRESHOLD", threshold);
+
   double runtime= core.start();
   // POST-PROCESSING *****
- 
+
   std::cout << "Jacobi finished in " << runtime << std::endl;
-  std::cout << "\t Updates: " << core.last_update_count() << " per node: " 
+  std::cout << "\t Updates: " << core.last_update_count() << " per node: "
      << core.last_update_count() / core.graph().num_vertices() << std::endl
     << "\t Rate:     " << (core.last_update_count()/runtime) << std::endl;
 
@@ -288,7 +288,7 @@ int main(int argc,  char *argv[]) {
      verify_values(unittest, ret.toDouble());
     }
   }
- 
+
   vec ret = fill_output(&core.graph(), matrix_info, JACOBI_X);
   write_output_vector(datafile + "x.out", format, ret, false);
 

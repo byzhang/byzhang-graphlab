@@ -1,5 +1,5 @@
-/**  
- * Copyright (c) 2009 Carnegie Mellon University. 
+/**
+ * Copyright (c) 2009 Carnegie Mellon University.
  *     All rights reserved.
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
@@ -39,7 +39,6 @@
 
 #include <graphlab.hpp>
 
-
 /// Types------------------------------------------------------------------>
 
 
@@ -49,7 +48,7 @@
 struct vertex_data {
   uint32_t nupdates;
   double value, old_value;
-  vertex_data(double value = 1) : 
+  vertex_data(double value = 1) :
     nupdates(0), value(value), old_value(0) { }
 }; // End of vertex data
 SERIALIZABLE_POD(vertex_data);
@@ -63,7 +62,7 @@ std::ostream& operator<<(std::ostream& out, const vertex_data& vdata);
  */
 struct edge_data {
   double weight;
-  edge_data(double weight = 1) : weight(weight) { } 
+  edge_data(double weight = 1) : weight(weight) { }
 }; // End of edge data
 SERIALIZABLE_POD(edge_data);
 
@@ -71,7 +70,7 @@ SERIALIZABLE_POD(edge_data);
 std::ostream& operator<<(std::ostream& out, const edge_data& edata);
 
 //! The type of graph used in this program
-typedef graphlab::graph2<vertex_data, edge_data> graph_type;
+typedef graphlab::igraph<graphlab::redis_graph<vertex_data, edge_data> > graph_type;
 // typedef graphlab::graph<vertex_data, edge_data> graph_type;
 
 
@@ -96,7 +95,7 @@ void save_pagerank(const std::string& fname,
   std::ofstream fout;
   fout.open(fname.c_str());
   fout << std::setprecision(10);
-  for(graph_type::vertex_id_type vid = 0; 
+  for(graph_type::vertex_id_type vid = 0;
       vid < graph.num_vertices(); ++vid) {
     fout << graph.vertex_data(vid).value << '\t'
          << graph.vertex_data(vid).old_value << '\t'
@@ -131,14 +130,16 @@ void normalize_graph(graph_type& graph) {
   logstream(LOG_INFO)
     << "Renormalizing transition probabilities." << std::endl;
   typedef graph_type::vertex_id_type vertex_id_type;
-  for(vertex_id_type vid = 0; vid < graph.num_vertices(); ++vid) {  
+  for(vertex_id_type vid = 0; vid < graph.num_vertices(); ++vid) {
     double sum = 0;
     const graph_type::edge_list_type out_edges = graph.out_edges(vid);
     // Sum up weight on out edges
-    for(size_t i = 0; i < out_edges.size(); ++i) 
+    for(size_t i = 0; i < out_edges.size(); ++i)
       sum += graph.edge_data(out_edges[i]).weight;
-    for(size_t i = 0; i < out_edges.size(); ++i) 
-      graph.edge_data(out_edges[i]).weight /= sum;
+    for(size_t i = 0; i < out_edges.size(); ++i) {
+      graph_type::reference_edge_data_type e = graph.edge_data(out_edges[i]);
+      e.weight /= sum;
+    }
   }
   logstream(LOG_INFO)
     << "Finished normalizing transition probabilities." << std::endl;

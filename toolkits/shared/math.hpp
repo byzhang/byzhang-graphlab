@@ -1,5 +1,5 @@
-/**  
- * Copyright (c) 2009 Carnegie Mellon University. 
+/**
+ * Copyright (c) 2009 Carnegie Mellon University.
  *     All rights reserved.
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
@@ -51,7 +51,7 @@ struct math_info{
   int ortho_repeats;
   int start, end;
   bool update_function;
-  
+
   math_info(){
     reset_offsets();
   }
@@ -109,7 +109,7 @@ struct dummy_context{
   vertex_data_type & vertex_data(){ return pgraph->vertex_data(id); }
   edge_list out_edges() { return pgraph->out_edges(id); }
   edge_list in_edges() { return pgraph->in_edges(id); }
-  vertex_data_type & const_vertex_data(int id) { return pgraph->vertex_data(id); }
+  const vertex_data_type & const_vertex_data(int id) const { return pgraph->vertex_data(id); }
 #ifdef USE_GRAPH2
   edge_data_type &edge_data(const edge_type &i){ return pgraph->edge_data(i); }
 #endif
@@ -122,18 +122,18 @@ struct dummy_context{
 #ifdef USE_GRAPHLAB_ENGINE
 struct Axb:
  public iupdate_functor<graph_type, Axb> {
- 
+
   void operator()(icontext_type &context){
 #else
 struct Axb:
  public iupdate_functor<graph_type, Axb> {
- 
+
   void operator()(icontext_type &context){
   }
-  void operator+=(const Axb& other) { 
+  void operator+=(const Axb& other) {
   }
   void finalize(iglobal_context_type& context) {
-  } 
+  }
 };
 
 void update_function_Axb(dummy_context &context){
@@ -143,7 +143,7 @@ void update_function_Axb(dummy_context &context){
 
   vertex_data& user = context.vertex_data();
   bool rows = context.vertex_id() < (uint)info.get_start_node(false);
-  if (info.is_square()) 
+  if (info.is_square())
     rows = mi.A_transpose;
   assert(mi.r_offset >=0);
   //store previous value for convergence detection
@@ -153,17 +153,17 @@ void update_function_Axb(dummy_context &context){
   double val = 0;
   assert(mi.x_offset >=0 || mi.y_offset>=0);
   timer t; t.start();
- 
+
   /*** COMPUTE r = c*A*x  ********/
   if (mi.A_offset  && mi.x_offset >= 0){
    edge_list edges = rows?
-	context.out_edges() : context.in_edges(); 
+	context.out_edges() : context.in_edges();
 #ifdef USE_GRAPH2
    for (size_t i = 0; i < edges.size(); i++){
 #else
    double * weight = (((edges.weights == NULL) ? NULL : ((double*)edges.weights + edges.abs_offset)));
    for (uint * start = edges.start_ptr + edges.abs_offset; start < edges.start_ptr + edges.abs_offset + edges._size; start++){
-//   for (double * weight = (double*)edges.weights + edges.abs_offset; 
+//   for (double * weight = (double*)edges.weights + edges.abs_offset;
 //        weight != (double*)edges.weights + edges.abs_offset + edges._size;
 //        weight++){
 #endif
@@ -175,14 +175,14 @@ void update_function_Axb(dummy_context &context){
 #else
       const vertex_data& movie = context.const_vertex_data(*start);
       if (!no_edge_data)
-        val += (*weight * movie.pvec[mi.x_offset]); 
+        val += (*weight * movie.pvec[mi.x_offset]);
       else val += movie.pvec[mi.x_offset];
 //      start++;
 
       if (weight != NULL) weight++;
 #endif
     }
-  
+
     if  (info.is_square() && mi.use_diag)// add the diagonal term
       val += (/*mi.c**/ (user.A_ii+ regularization) * user.pvec[mi.x_offset]);
 
@@ -192,10 +192,10 @@ void update_function_Axb(dummy_context &context){
   else if (!mi.A_offset && mi.x_offset >= 0){
      val = mi.c*user.pvec[mi.x_offset];
   }
-  
+
   /**** COMPUTE r+= d*y (optional) ***/
   if (mi.y_offset>= 0){
-    val += mi.d*user.pvec[mi.y_offset]; 
+    val += mi.d*user.pvec[mi.y_offset];
   }
 
   /***** compute r = (... ) / div */
@@ -205,16 +205,16 @@ void update_function_Axb(dummy_context &context){
   user.pvec[mi.r_offset] = val;
 }
 #ifdef USE_GRAPHLAB_ENGINE
-  void operator+=(const Axb& other) { 
+  void operator+=(const Axb& other) {
   }
 
   void finalize(iglobal_context_type& context) {
-  } 
+  }
 };
 #endif
 
 core<graph_type, Axb> * glcore = NULL;
-void init_math(graph_type * _pgraph, core<graph_type, Axb> * _glcore, bipartite_graph_descriptor & _info, double ortho_repeats = 3, 
+void init_math(graph_type * _pgraph, core<graph_type, Axb> * _glcore, bipartite_graph_descriptor & _info, double ortho_repeats = 3,
   bool update_function = false){
   pgraph = _pgraph;
   glcore = _glcore;
@@ -225,7 +225,7 @@ void init_math(graph_type * _pgraph, core<graph_type, Axb> * _glcore, bipartite_
 }
 
 
-class DistMat; 
+class DistMat;
 class DistDouble;
 
 class DistVec{
@@ -236,7 +236,7 @@ class DistVec{
    std::string name; //optional
    bool transpose;
    bipartite_graph_descriptor info;
-   int start; 
+   int start;
    int end;
 
    void init(){
@@ -271,7 +271,7 @@ class DistVec{
 
    DistVec& operator-(){
      mi.d=-1.0;
-     return *this; 
+     return *this;
    }
    DistVec& operator-(const DistVec & other){
      mi.x_offset = offset;
@@ -279,7 +279,7 @@ class DistVec{
      transpose = other.transpose;
      if (mi.d == 0)
        mi.d = -1.0;
-     else 
+     else
        mi.d*=-1.0;
      return *this;
    }
@@ -292,18 +292,18 @@ class DistVec{
       mi.x_offset =offset;
       mi.y_offset = other.offset;
       transpose = other.transpose;
-      return *this; 
+      return *this;
    }
    DistVec& operator+(const DistMat &other);
-   
+
    DistVec& operator-(const DistMat &other);
-  
+
    DistVec& operator/(const DistVec &other){
       mi.div_offset = other.offset;
       return *this;
    }
    DistVec& operator/(const DistDouble & other);
-   
+
    DistVec& operator/(double val){
       assert(val != 0);
       assert(mi.d == 0);
@@ -316,14 +316,14 @@ class DistVec{
      assert(offset < (info.is_square() ? 2*data_size: data_size));
      if (mi.x_offset == -1 && mi.y_offset == -1){
          mi.y_offset = vec.offset;
-       }  
+       }
       mi.r_offset = offset;
       assert(prev_offset < data_size);
       mi.prev_offset = prev_offset;
       if (mi.d == 0.0)
         mi.d=1.0;
       transpose = vec.transpose;
-      end = vec.end; 
+      end = vec.end;
       start = vec.start;
       mi.start = start;
       mi.end = end;
@@ -331,12 +331,12 @@ INITIALIZE_TRACER(Axbtrace2, "Update function Axb");
 BEGIN_TRACEPOINT(Axbtrace2);
       if (mi.update_function){
         for (vertex_id_type i = start; i < (vertex_id_type)end; i++)
-          glcore->schedule(i, Axb()); 
+          glcore->schedule(i, Axb());
         runtime += glcore->start();
       }
       else {
 #ifdef USE_GRAPHLAB_ENGINE
-      glcore->aggregate_now("Axb"); 
+      glcore->aggregate_now("Axb");
 #else
 #pragma omp parallel for
 for (int t=start; t< end; t++){
@@ -361,19 +361,19 @@ END_TRACEPOINT(Axbtrace2);
     else {
       transpose = false;
     }
-//#pragma omp parallel for    
+//#pragma omp parallel for
 INITIALIZE_TRACER(vecequals, "vector assignment");
 BEGIN_TRACEPOINT(vecequals);
-    for (int i=start; i< end; i++){  
+    for (int i=start; i< end; i++){
          pgraph->vertex_data(i).pvec[offset] = pvec[i-start];
     }
 END_TRACEPOINT(vecequals);
     debug_print(name);
-    return *this;       
+    return *this;
   }
 
 
-    vec to_vec(){
+    vec to_vec() const {
       vec ret = zeros(end-start);
       for (int i=start; i< end; i++){
          ret[i-start] = pgraph->vertex_data(i).pvec[offset];
@@ -381,29 +381,29 @@ END_TRACEPOINT(vecequals);
       return ret;
     }
 
-   double get_pos(int i){
+   double get_pos(int i) const {
      return pgraph->vertex_data(i).pvec[offset];
    }
 
-  void debug_print(const char * name){
+  void debug_print(const char * name) const {
      if (debug){
        std::cout<<name<<"["<<display_offset<<"]" << std::endl;
-       for (int i=start; i< std::min(end, start+MAX_PRINT_ITEMS); i++){  
+       for (int i=start; i< std::min(end, start+MAX_PRINT_ITEMS); i++){
          //std::cout<<pgraph->vertex_data(i).pvec[(mi.r_offset==-1)?offset:mi.r_offset]<<" ";
          printf("%.5lg ", fabs(pgraph->vertex_data(i).pvec[(mi.r_offset==-1)?offset:mi.r_offset]));
        }
        printf("\n");
      }
   }
-  void debug_print(std::string name){ return debug_print(name.c_str());}
+  void debug_print(std::string name) const { return debug_print(name.c_str());}
 
-  double operator[](int i){
+  double operator[](int i) const {
     assert(i < end - start);
     return pgraph->vertex_data(i+start).pvec[offset];
   }
-  
+
   DistDouble operator*(const DistVec & other);
-  
+
   DistVec& operator*(const double val){
      assert(val!= 0);
      mi.d=val;
@@ -413,7 +413,7 @@ END_TRACEPOINT(vecequals);
 
   DistMat &operator*(DistMat & v);
 
-  DistVec& _transpose() { 
+  DistVec& _transpose() {
      /*if (!config.square){
        start = n; end = m+n;
      }*/
@@ -421,19 +421,19 @@ END_TRACEPOINT(vecequals);
   }
 
   DistVec& operator=(DistMat &mat);
- 
+
  };
 
 class DistSlicedMat{
   public:
      bipartite_graph_descriptor info;
      int start_offset;
-     int end_offset; 
+     int end_offset;
       std::string name; //optional
      int start;
      int end;
      bool transpose;
- 
+
   DistSlicedMat(int _start_offset, int _end_offset, bool _transpose, bipartite_graph_descriptor &_info, std::string _name){
      assert(_start_offset < _end_offset);
      assert(_start_offset >= 0);
@@ -502,7 +502,7 @@ class DistMat{
     bool transpose;
     bipartite_graph_descriptor info;
 
-    DistMat(bipartite_graph_descriptor& _info) { 
+    DistMat(bipartite_graph_descriptor& _info) {
       info = _info;
       transpose = false;
     };
@@ -521,12 +521,12 @@ class DistMat{
         mi.c=-1.0;
         return *this;
     }
-   
+
     DistMat &operator/(const DistVec & v){
         mi.div_offset = v.offset;
         return *this;
     }
- 
+
     DistMat &operator+(){
         mi.c=1.0;
         return *this;
@@ -541,7 +541,7 @@ class DistMat{
         mi.y_offset = v.offset;
         if (mi.d == 0.0)
           mi.d=-1.0;
-        else 
+        else
           mi.d*=-1.0;
         return *this;
     }
@@ -556,7 +556,7 @@ class DistMat{
 
     void set_use_diag(bool use){
       mi.use_diag = use;
-    }   
+    }
 };
 
 
@@ -594,7 +594,7 @@ END_TRACEPOINT(Axbtrace);
 DistVec& DistVec::operator+(const DistMat &other){
       mi.y_offset = offset;
       transpose = other.transpose;
-      return *this; 
+      return *this;
 }
 DistVec& DistVec::operator-(const DistMat & other){
       mi.y_offset = offset;
@@ -619,8 +619,8 @@ class DistDouble{
 
      DistDouble() {};
      DistDouble(double _val) : val(_val) {};
-   
-   
+
+
      DistVec& operator*(DistVec & dval){
         mi.d=val;
         return dval;
@@ -660,12 +660,12 @@ class DistDouble{
  DistDouble DistVec::operator*(const DistVec & vec){
       mi.y_offset = offset;
       mi.b_offset = vec.offset;
-      if (mi.d == 0) 
+      if (mi.d == 0)
         mi.d = 1.0;
       assert(mi.y_offset >=0 && mi.b_offset >= 0);
 
       double val = 0;
-      for (int i=start; i< end; i++){  
+      for (int i=start; i< end; i++){
          const vertex_data * data = &pgraph->vertex_data(i);
          double * pv = (double*)&data->pvec[0];
         // if (y_offset >= 0 && b_offset == -1)
@@ -687,7 +687,7 @@ int size(DistMat & A, int pos){
    assert(pos == 1 || pos == 2);
    return A.info.num_nodes(!A.transpose);
 }
-    
+
 DistMat &DistMat::operator*(const DistDouble &d){
    mi.c = d.val;
    return *this;
@@ -759,7 +759,7 @@ BEGIN_TRACEPOINT(orthogonalize_vs_alltrace);
   bool old_debug = debug;
   debug = false;
   DistVec current = mat[curoffset];
-  assert(mat.start_offset <= current.offset); 
+  assert(mat.start_offset <= current.offset);
   double * alphas = new double[curoffset];
   //DistDouble * alphas = new DistDouble[curoffset];
   //cout<<current.to_vec().transpose() << endl;
@@ -778,10 +778,10 @@ BEGIN_TRACEPOINT(orthogonalize_vs_alltrace);
         pgraph->vertex_data(k).pvec[current.offset] -= alphas[i-mat.start_offset]  * pgraph->vertex_data(k).pvec[i];
       }
     }
-  } //for ortho_repeast 
+  } //for ortho_repeast
   }
 
-    delete [] alphas; 
+    delete [] alphas;
     debug = old_debug;
     current.debug_print(current.name);
 //    alpha = 0;
@@ -790,13 +790,13 @@ BEGIN_TRACEPOINT(orthogonalize_vs_alltrace);
 //#pragma omp parallel for private(k) reduction(+: sum)
     for (k=info.get_start_node(!current.transpose); k< info.get_end_node(!current.transpose); k++){
       sum = sum + pow(pgraph->vertex_data(k).pvec[current.offset],2);
-    }    
+    }
     alpha = sqrt(sum);
     if (alpha >= 1e-10 ){
 #pragma omp parallel for
       for (int k=info.get_start_node(!current.transpose); k< info.get_end_node(!current.transpose); k++){
         pgraph->vertex_data(k).pvec[current.offset]/=alpha;
-      }    
+      }
     }
     END_TRACEPOINT(orthogonalize_vs_alltrace);
 }
@@ -808,5 +808,5 @@ DistVec& DistVec::operator/(const DistDouble & other){
       mi.d = 1/other.val;
       return *this;
 }
- 
+
 #endif //_MATH_HPP

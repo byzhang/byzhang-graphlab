@@ -103,9 +103,13 @@ namespace graphlab {
 
     /** The type of the vertex data stored in the graph */
     typedef VertexData vertex_data_type;
+    typedef VertexData& reference_vertex_data_type;
+    typedef const VertexData& const_reference_vertex_data_type;
 
     /** The type of the edge data stored in the graph */
     typedef EdgeData   edge_data_type;
+    typedef EdgeData&  reference_edge_data_type;
+    typedef const EdgeData&  const_reference_edge_data_type;
 
     /** Represents an edge with source() and target()*/
     typedef typename gstore_type::edge_type edge_type;
@@ -427,25 +431,21 @@ namespace graphlab {
 
     /** \brief Returns the vertex color of a vertex.
         Only valid if compute_coloring() is called first.*/
-    vertex_color_type& color(vertex_id_type vertex) {
+    void set_color(vertex_id_type vertex, const vertex_color_type& data) {
       ASSERT_TRUE(use_vcolor);
       ASSERT_LT(vertex, vertices.size());
-      return vcolors[vertex];
+      vcolors[vertex] = data;
     }
 
     vertex_color_type get_color(vertex_id_type vid) const{
       return color(vid);
     }
 
-    void set_color(vertex_id_type vid, vertex_color_type col) {
-      color(vid) = col;
-    }
-
     /** \brief This function constructs a heuristic coloring for the
         graph and returns the number of colors */
     size_t compute_coloring() {
       // Reset the colors
-      for(vertex_id_type v = 0; v < num_vertices(); ++v) color(v) = 0;
+      for(vertex_id_type v = 0; v < num_vertices(); ++v) set_color(v, 0);
       // construct a permuation of the vertices to use in the greedy
       // coloring. \todo Should probably sort by degree instead when
       // constructing greedy coloring.

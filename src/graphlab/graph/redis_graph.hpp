@@ -47,13 +47,14 @@
 #include <boost/bind.hpp>
 #define BOOST_SPIRIT_NO_PREDEFINED_TERMINALS
 #include <boost/coerce.hpp>
+#include <boost/coerce/tag/base.hpp>
 #include <boost/unordered_set.hpp>
 
 #include <hiredispp.h>
 
 #include <graphlab/logger/logger.hpp>
 #include <graphlab/logger/assertions.hpp>
-#include <graphlab/serialization/serialization-includes.hpp>
+#include <graphlab/serialization/serialization_includes.hpp>
 #include <graphlab/util/random.hpp>
 
 #include <graphlab/macros_def.hpp>
@@ -62,6 +63,16 @@ using namespace boost;
 using namespace hiredispp;
 
 namespace graphlab {
+  template <typename T>
+  T HexString2Int(const std::string& data) {
+    return coerce::as<T>(data, coerce::tag::hex());
+  }
+
+  template <typename T>
+  std::string Int2HexString(const T& data) {
+    return coerce::as<std::string>(data, coerce::tag::hex());
+  }
+
   // CLASS GRAPH ==============================================================>
   /**
      \brief The GraphLab primary Graph container templatized over the
@@ -73,14 +84,14 @@ namespace graphlab {
      is <code>graphlab::edge_id_type</code>. Both
      <code>vertex_id_type</code> and <code>edge_id_type</code> are
      currently defined as <code>uint32_t</code>.  While this limits
-     the graphs to 4 billion vertices it also helps reduce the storage
+     the graphs to 4 billion _vertices it also helps reduce the storage
      overhead. We encourage users to use the
      <code>vertex_id_type</code> and <code>edge_id_type</code> types
      as they may change in larger distributed systems.
 
      <h2> Graph Creation </h2>
 
-     Vertices and edges are added using the graph::add_vertex()
+     Vertices and _edges are added using the graph::add_vertex()
      and graph::add_edge() member functions:
 
 
@@ -92,32 +103,30 @@ namespace graphlab {
 
      The functions return the id's of the added vertex and edge
      respectively.  An edge can only be added if both the source and
-     target vertex id's are already in the graph. Duplicate edges are not
+     target vertex id's are already in the graph. Duplicate _edges are not
      supported and may result in undefined behavior.
   */
   template<typename VertexData, typename EdgeData>
   class redis_graph {
   public:
-
     /// The type of a vertex is a simple size_t
-    typedef uint32_t vertex_id_type;
+    typedef graphlab::vertex_id_type vertex_id_type;
 
     /// The type of an edge id
-    typedef uint32_t edge_id_type;
+    typedef graphlab::edge_id_type edge_id_type;
 
     /// Type for vertex colors
-    typedef vertex_id_type vertex_color_type;
-
-    /** The type of the edge list */
-    typedef vector<edge_id_type> edge_list_type;
+    typedef graphlab::vertex_color_type vertex_color_type;
 
     /** The type of the vertex data stored in the graph */
     typedef VertexData vertex_data_type;
 
     /** The type of the edge data stored in the graph */
-    typedef EdgeData edge_data_type;
+    typedef EdgeData   edge_data_type;
 
-  public:
+    /* ----------------------------------------------------------------------------- */
+    /* Helper data field and structures: redis_server, edge_type                     */
+    /* ----------------------------------------------------------------------------- */
     struct redis_server {
       const char *host;
       int port;
@@ -127,115 +136,203 @@ namespace graphlab {
         port = port_;
         db = db_;
       }
-    }
+    };
 
+    class reference_vertex_data_type : public vertex_data_type {
+      public:
+        void set_id(const vertex_id_type& id_) {
+          id = id_;
+        }
+
+        void set_graph(redis_graph* graph_) {
+          graph = graph_;
+        }
+
+        virtual ~reference_vertex_data_type() {
+          graph->commit_vertex_data(id, *this);
+        }
+      private:
+        vertex_id_type id;
+        redis_graph* graph;
+    };
+
+    typedef const vertex_data_type const_reference_vertex_data_type;
+
+    class reference_edge_data_type : public edge_data_type {
+      public:
+        void set_id(const edge_id_type& id_) {
+          id = id_;
+        }
+
+        void set_graph(redis_graph* graph_) {
+          graph = graph_;
+        }
+
+        virtual ~reference_edge_data_type() {
+          graph->commit_edge_data(id, *this);
+        }
+      private:
+        edge_id_type id;
+        redis_graph* graph;
+    };
+
+    typedef const edge_data_type const_reference_edge_data_type;
+
+    // A class of edge information. Used as value type of the edge_list.
+    class edge_type {
+    public:
+      edge_type () : _source(-1), _target(-1), _edge_id(-1), _empty(true) { }
+      edge_type (const vertex_id_type _source, const vertex_id_type _target,
+                 const edge_id_type _eid) :
+        _source(_source), _target(_target), _edge_id(_eid), _empty(false) { }
+      edge_type (const redis_graph& graph, const vertex_id_type _source, const vertex_id_type _target) :
+        _source(_source)
+        , _target(_target)
+        , _edge_id(-1)
+        , _empty(true) {
+          auto result = graph._out_edges->hget(Int2HexString(_source), Int2HexString(_target));
+          if (result == Redis::Nil) {
+            return;
+          }
+          _edge_id = HexString2Int<edge_id_type>(result);
+          _empty = false;
+        }
+      edge_type (const redis_graph& graph, const edge_id_type _eid) :
+        _source(-1)
+        , _target(-1)
+        , _edge_id(_eid)
+        , _empty(true) {
+          std::vector<std::string> fields;
+          fields.push_back("S");
+          fields.push_back("T");
+          auto reply = graph._edges->hmget(Int2HexString(_eid), fields);
+          const auto& result = reply[0];
+          if (result.isNil()) {
+            return;
+          }
+          _source = HexString2Int<vertex_id_type>(result);
+          _target = HexString2Int<vertex_id_type>(reply[1]);
+          _empty = false;
+        }
+    public:
+      inline vertex_id_type source() const {
+        // ASSERT_FALSE(empty());
+        return _source;
+      }
+
+      inline vertex_id_type target() const {
+        // ASSERT_FALSE(empty());
+        return _target;
+      }
+
+      inline edge_id_type edge() const {
+        return _edge_id;
+      }
+
+      inline bool empty() const { return _empty; }
+      // Data fields.
+    private:
+      vertex_id_type _source;
+      vertex_id_type _target;
+      edge_id_type _edge_id;
+      bool _empty;
+    }; // end of class edge_type.
+
+    /** The type of the edge list */
+    typedef std::vector<edge_type> edge_list_type;
+    typedef std::vector<edge_type> edge_list;
+
+  public:
     // CONSTRUCTORS ============================================================>
     /**
      * Build a basic graph
      */
-    redis_graph(const redis_server& vertex_server,
-                const redis_server& edge_server,
-                const redis_server& in_edge_server,
-                const redis_server& out_edge_server,
-                const redis_server& color_server)
-      : vertices(new Redis(vertex_server.host, vertex_server.port))
-      , vcolors(new Redis(color_server.host, color_server.port))
-      , edges(new Redis(edge_server.host, edge_server.port))
-      , in_edges(new Redis(in_edge_server.host, in_edge_server.port))
-      , out_edges(new Redis(out_edge_server.host, out_edge_server.port))
+    redis_graph()
+      : _vertices(NULL)
+      , _vcolors(NULL)
+      , _edges(NULL)
+      , _in_edges(NULL)
+      , _out_edges(NULL)
     {
+    }
+
+    void init(const redis_server& vertex_server,
+              const redis_server& edge_server,
+              const redis_server& in_edge_server,
+              const redis_server& out_edge_server,
+              const redis_server& color_server) {
       // TODO: check/handle the same server address.
-      vertices->select(vertex_server.db);
-      vcolors->select(color_server.db);
-      edges->select(edge_server.db);
-      edges->select(edge_server.db);
-      in_edges->select(in_edge_server.db);
-      out_edges->select(out_edge_server.db);
+      _vertices = new Redis(vertex_server.host, vertex_server.port);
+      _vcolors = new Redis(color_server.host, color_server.port);
+      _edges = new Redis(edge_server.host, edge_server.port);
+      _in_edges = new Redis(in_edge_server.host, in_edge_server.port);
+      _out_edges = new Redis(out_edge_server.host, out_edge_server.port);
+      _vertices->select(vertex_server.db);
+      _vcolors->select(color_server.db);
+      _edges->select(edge_server.db);
+      _in_edges->select(in_edge_server.db);
+      _out_edges->select(out_edge_server.db);
     }
 
     virtual ~redis_graph() {
-      delete vertices;
-      delete vcolors;
-      delete edges;
-      delete in_edges;
-      delete out_edges;
+      delete _vertices;
+      delete _vcolors;
+      delete _edges;
+      delete _in_edges;
+      delete _out_edges;
     }
 
     // METHODS =================================================================>
-
     /**
      * \brief Resets the graph state.
      */
     void clear() {
-      vertices->flush();
-      vcolors->flush();
-      edges->flush();
-      in_edges->flush();
-      out_edges->flush();
-      ++changeid;
+      _vertices->flush();
+      _vcolors->flush();
+      _edges->flush();
+      _in_edges->flush();
+      _out_edges->flush();
     }
 
-    /** \brief Get the number of vertices */
+    void finalize() {
+    }
+
+    /** \brief Get the number of _vertices */
     size_t num_vertices() const {
-      return vertices->size();
-    } // end of num vertices
+      return _vertices->size();
+    } // end of num _vertices
 
-    /** \brief Get the number of vertices local to this machine */
+    /** \brief Get the number of _vertices local to this machine */
     size_t local_vertices() const {
-      return vertices->size();
-    } // end of num vertices
+      return _vertices->size();
+    } // end of num _vertices
 
-    /** \brief Get the number of edges */
+    /** \brief Get the number of _edges */
     size_t num_edges() const {
-      return edges->size();
-    } // end of num edges
+      return _edges->size();
+    } // end of num _edges
 
+    /** \brief Get the number of in _edges of a particular vertex */
+    size_t num_in_edges(vertex_id_type v) const {
+      return _in_edges->hlen(Int2HexString(v));
+    } // end of num _vertices
 
-    /** \brief Get the number of in edges of a particular vertex */
-    size_t num_in_neighbors(vertex_id_type v) const {
-      return in_edges->hlen(v);
-    } // end of num vertices
-
-    /** \brief Get the number of out edges of a particular vertex */
-    size_t num_out_neighbors(vertex_id_type v) const  {
-      return out_edges->hlen(v);
-    } // end of num vertices
+    /** \brief Get the number of out _edges of a particular vertex */
+    size_t num_out_edges(vertex_id_type v) const  {
+      return _out_edges->hlen(Int2HexString(v));
+    } // end of num _vertices
 
     /** \brief Finds an edge.
         The value of the first element of the pair will be true if an
         edge from src to target is found and false otherwise. If the
         edge is found, the edge ID is returned in the second element of the pair. */
-    std::pair<bool, edge_id_type>
-    find(vertex_id_type source, vertex_id_type target) const {
-      auto result = out_edges->hget(source, target);
-      if (result == RedisConst<char>::Nil) {
-        return make_pair(false, -1);
-      }
-      return make_pair(true, HexString2Int<edge_id_type>(result));
+    edge_type find(vertex_id_type source, vertex_id_type target) const {
+      return edge_type(*this, source, target);
     } // end of find
 
-
-    /** \brief A less safe version of find.
-        Returns the edge_id of an edge from src to target exists.
-        Assertion failure otherwise. */
-    edge_id_type edge_id(vertex_id_type source, vertex_id_type target) const {
-      auto res = find(source, target);
-      // The edge must exist
-      ASSERT_TRUE(res.first);
-      DCHECK_LT(res.second, edges->size());
-      return res.second;
-    } // end of edge_id
-
-
-    /** \brief Returns the edge ID of the edge going in the opposite direction.
-        Assertion failure if such an edge is not found.  */
-    edge_id_type rev_edge_id(edge_id_type eid) const {
-      DCHECK_LT(eid, edges->size());
-      Redis::Reply reply = edges->hmget(eid, 'S', 'T');
-      string source = reply[0];
-      string target = Reply[1];
-      return edge_id(HexString2Int<vertext_id_type>(target), HexString2Int(source));
-    } // end of rev_edge_id
+    edge_type reverse_edge(const edge_type& edge) const {
+      return find(edge.target(), edge.source());
+    }
 
     /**
      * \brief Creates a vertex containing the vertex data and returns the id
@@ -245,15 +342,22 @@ namespace graphlab {
     vertex_id_type add_vertex(const VertexData& vdata = VertexData() ) {
       vertex_id_type id = 0;
       while (true) {
-        id = vertices->size();
-        bool ok = vertices->setnx(Int2HexString(id), serialize_to_string(vdata));
+        id = _vertices->size();
+        bool ok = _vertices->setnx(Int2HexString(id), serialize_to_string(vdata));
         if (ok) {
           break;
         }
       }
-      ASSERT_EQ(1, vcolors->setnx(Int2HexString(id), 0));
+      ASSERT_EQ(1, _vcolors->setnx(Int2HexString(id), 0));
       return id;
     } // End of add vertex;
+
+    void resize(size_t num_vertices) {
+      auto current_num_vertices = this->num_vertices();
+      for (size_t i = 0; i < num_vertices - current_num_vertices; ++i) {
+        add_vertex();
+      }
+    }
 
     /**
      * \brief Creates an edge connecting vertex source to vertex target.  Any
@@ -261,13 +365,13 @@ namespace graphlab {
      */
     edge_id_type add_edge(vertex_id_type source, vertex_id_type target,
                           const EdgeData& edata = EdgeData()) {
-      auto num_vertices = vertices->size();
+      auto num_vertices = this->num_vertices();
       if (source >= num_vertices || target >= num_vertices) {
         logstream(LOG_FATAL)
           << "Attempting add_edge (" << source
           << " -> " << target
-          << ") when there are only " << vertices->size()
-          << " vertices" << std::endl;
+          << ") when there are only " << _vertices->size()
+          << " _vertices" << std::endl;
 
         ASSERT_MSG(source < num_vertices, "Invalid source vertex!");
         ASSERT_MSG(target < num_vertices, "Invalid target vertex!");
@@ -283,218 +387,132 @@ namespace graphlab {
       // Add the edge to the set of edge data (this copies the edata)
       edge_id_type edge_id = 0;
       while (true) {
-        edge_id = edges->size();
-        bool ok = edges->hsetnx(Int2HexString(edge_id), "E", serialize_to_string(edata));
+        edge_id = _edges->size();
+        bool ok = _edges->hsetnx(Int2HexString(edge_id), "E", serialize_to_string(edata));
         if (ok) {
           break;
         }
       }
-      vector<pair<string, string> > edge;
+      std::vector<std::pair<std::string, std::string> > edge;
       auto source_str = Int2HexString(source);
       edge.push_back(make_pair("S", source_str));
       auto target_str = Int2HexString(target);
       edge.push_back(make_pair("T", target_str));
       auto edge_id_str = Int2HexString(edge_id);
-      edges->hmset(edge_id_str, edge);
+      _edges->hmset(edge_id_str, edge);
 
       // Add the edge id to in and out edge maps
-      in_edges->hset(target_str, source_str, edge_id_str);
-      out_edges->hset(source_str, target_str, edge_id_str);
+      _in_edges->hset(target_str, source_str, edge_id_str);
+      _out_edges->hset(source_str, target_str, edge_id_str);
 
       return edge_id;
     } // End of add edge
 
     /** \brief Returns a reference to the data stored on the vertex v. */
-    void set_vertex_data(vertex_id_type v, const VertexData& data) {
-      vertices->set(Int2HexString(v), serialize_to_string(data));
+    reference_vertex_data_type vertex_data(vertex_id_type v) {
+      DCHECK_LT(v, _vertices->size());
+      reference_vertex_data_type vertex;
+      vertex_data_type* real_vertex = &vertex;
+      deserialize_from_string(_vertices->get(Int2HexString(v)), *real_vertex);
+      vertex.set_id(v);
+      vertex.set_graph(this);
+      return vertex;
+    } // end of data(v)
+    void commit_vertex_data(vertex_id_type v, const VertexData& data) {
+      _vertices->set(Int2HexString(v), serialize_to_string(data));
     } // end of data(v)
 
     /** \brief Returns a constant reference to the data stored on the vertex v */
-    const VertexData& vertex_data(vertex_id_type v) const {
-      DCHECK_LT(v, vertices->size());
+    const_reference_vertex_data_type vertex_data(vertex_id_type v) const {
+      DCHECK_LT(v, _vertices->size());
       VertexData vertex;
-      deserialize_from_string(vertices->get(v), vertex);
+      deserialize_from_string(_vertices->get(Int2HexString(v)), vertex);
       return vertex;
     } // end of data(v)
 
     /** \brief Returns a reference to the data stored on the edge source->target. */
-    void set_edge_data(vertex_id_type source, vertex_id_type target, const EdgeData& data) {
-      DCHECK_LT(source, vertices->size());
-      DCHECK_LT(target, vertices->size());
-      auto ans = find(source, target);
-      // We must find the edge!
-      ASSERT_TRUE(ans.first);
+    reference_edge_data_type edge_data(vertex_id_type source, vertex_id_type target) {
+      DCHECK_LT(source, _vertices->size());
+      DCHECK_LT(target, _vertices->size());
+      return edge_data(find(source, target));
+    }
+    reference_edge_data_type edge_data(const edge_type& edge) {
+      ASSERT_FALSE(edge.empty());
       // the edge id should be valid!
-      DCHECK_LT(ans.second, edges->size());
-      set_edge_data(ans.second, data);
-    } // end of edge_data(u,v)
+      DCHECK_LT(edge.edge(), _edges->size());
+      reference_edge_data_type e;
+      edge_data_type* real_edge = &e;
+      deserialize_from_string(_edges->hget(Int2HexString(edge.edge()), "E"), *real_edge);
+      e.set_id(edge.edge());
+      e.set_graph(this);
+      return e;
+    }
+    void commit_edge_data(edge_id_type edge_id, const EdgeData& data) {
+      _edges->hset(Int2HexString(edge_id), "E", serialize_to_string(data));
+    }
 
     /** \brief Returns a constant reference to the data stored on the
         edge source->target */
-    const EdgeData& edge_data(vertex_id_type source, vertex_id_type target) const {
-      DCHECK_LT(source, vertices->size());
-      DCHECK_LT(target, vertices->size());
-      auto ans = find(source, target);
-      // We must find the edge!
-      ASSERT_TRUE(ans.first);
-      // the edge id should be valid!
-      DCHECK_LT(ans.second, edges->size());
-      return edge_data(ans.second);
+    const_reference_edge_data_type edge_data(vertex_id_type source, vertex_id_type target) const {
+      DCHECK_LT(source, _vertices->size());
+      DCHECK_LT(target, _vertices->size());
+      return edge_data(find(source, target));
     } // end of edge_data(u,v)
 
-    /** \brief Returns a reference to the data stored on the edge e */
-    void set_edge_data(edge_id_type edge_id, const EdgeData& data) {
-      edges->hset(Int2HexString(edge_id), "E", serialize_to_string(data));
-    }
-
     /** \brief Returns a constant reference to the data stored on the edge e */
-    const EdgeData& edge_data(edge_id_type edge_id) const {
-      DCHECK_LT(edge_id, edges->size());
+    const_reference_edge_data_type edge_data(const edge_type& edge) const {
+      ASSERT_FALSE(edge.empty());
+      // the edge id should be valid!
+      DCHECK_LT(edge.edge(), _edges->size());
       EdgeData e;
-      deserialize_from_string(edges->hget(Int2HexString(edge_id), "E"), e);
+      deserialize_from_string(_edges->hget(Int2HexString(edge.edge()), "E"), e);
       return e;
     }
 
     /** \brief Returns the source vertex of an edge. */
     vertex_id_type source(edge_id_type edge_id) const {
-      //      DCHECK_LT(edge_id, edges.size());
-      return HexString2Int<vertex_id_type>(edges->hget(Int2HexString(edge_id), "S"));
+      //      DCHECK_LT(edge_id, _edges.size());
+      return HexString2Int<vertex_id_type>(_edges->hget(Int2HexString(edge_id), "S"));
     }
 
     /** \brief Returns the destination vertex of an edge. */
     vertex_id_type target(edge_id_type edge_id) const {
-      //      DCHECK_LT(edge_id, edges.size());
-      return HexString2Int<vertex_id_type>(edges->hget(Int2HexString(edge_id), "T"));
+      //      DCHECK_LT(edge_id, _edges.size());
+      return HexString2Int<vertex_id_type>(_edges->hget(Int2HexString(edge_id), "T"));
     }
 
     /** \brief Returns the vertex color of a vertex.
         Only valid if compute_coloring() is called first.*/
-    const vertex_color_type& color(vertex_id_type vertex) const {
-      DCHECK_LT(vertex, vcolors->size());
-      return HexString2Int<vertex_color_type>(vcolors->get(Int2HexString(vertex)));
+    vertex_color_type color(vertex_id_type vertex) const {
+      DCHECK_LT(vertex, _vcolors->size());
+      return HexString2Int<vertex_color_type>(_vcolors->get(Int2HexString(vertex)));
     }
 
     void set_color(vertex_id_type vid, const vertex_color_type& col) {
-      vcolors->set(Int2HexString(vid), Int2HexString(col));
+      _vcolors->set(Int2HexString(vid), Int2HexString(col));
     }
 
-    /** \brief This function constructs a heuristic coloring for the
-        graph and returns the number of colors */
-    size_t compute_coloring() {
-      size_t num_vertices = num_vertices();
-      // Reset the colors
-      for(auto v = 0; v < num_vertices; ++v) set_color(v, 0);
-      // construct a permuation of the vertices to use in the greedy
-      // coloring. \todo Should probably sort by degree instead when
-      // constructing greedy coloring.
-      std::vector<std::pair<vertex_id_type, vertex_id_type> > permutation(num_vertices);
-
-      for(auto v = 0; v < num_vertices; ++v)
-        permutation[v] = std::make_pair(-num_in_neighbors(v), v);
-      //      std::random_shuffle(permutation.begin(), permutation.end());
-      std::sort(permutation.begin(), permutation.end());
-      // Recolor
-      size_t max_color = 0;
-      for(auto i = 0; i < permutation.size(); ++i) {
-        std::set<vertex_color_type> neighbor_colors;
-        const auto& vid = permutation[i].second;
-        // Get the neighbor colors
-        for(const auto& eid : in_edge_ids(vid)){
-          const auto& neighbor_vid = source(eid);
-          const auto& neighbor_color = color(neighbor_vid);
-          neighbor_colors.insert(neighbor_color);
-        }
-        for(auto const& eid : out_edge_ids(vid)){
-          const auto& neighbor_vid = target(eid);
-          const auto& neighbor_color = color(neighbor_vid);
-          neighbor_colors.insert(neighbor_color);
-        }
-
-        vertex_color_type vertex_color = 0;
-        for(const auto& neighbor_color : neighbor_colors) {
-          if(vertex_color != neighbor_color) break;
-          else vertex_color++;
-          // Ensure no wrap around
-          ASSERT_NE(vertex_color, 0);
-        }
-        set_color(v, vertex_color);
-        max_color = std::max(max_color, size_t(vertex_color) );
-
-      }
-      // Return the NUMBER of colors
-      return max_color + 1;
-    } // end of compute coloring
-
-
-    /**
-     * \brief Check that the colors satisfy a valid coloring of the graph.
-     * return true is coloring is valid;
-     */
-    bool valid_coloring() const {
-      auto num_vertices = num_vertices();
-      for(auto vid = 0; vid < num_vertices; ++vid) {
-        const auto& vertex_color = color(vid);
-        const auto& in_edges = in_edge_ids(vid);
-        // Get the neighbor colors
-        for(const auto& eid : in_edges){
-          const auto& neighbor_vid = source(eid);
-          const auto& neighbor_color = color(neighbor_vid);
-          if(vertex_color == neighbor_color) return false;
-        }
-      }
-      return true;
-    }
-
-
-    /** \brief Return the edge ids of the edges arriving at v */
-    edge_list_type in_edge_ids(vertex_id_type v) const {
-      DCHECK_LT(v, in_edges->size());
+    /** \brief Return the edge ids of the _edges arriving at v */
+    edge_list_type in_edges(vertex_id_type v) const {
+      DCHECK_LT(v, _in_edges->size());
       edge_list_type edge_list;
-      Redis::Reply reply = in_edges->hkeys(Int2HexString(v));
-      for (auto i = 0; i < reply.size(); ++i) {
-        edge_list.push_back(HexString2Int<edge_id_type>(reply[i]));
+      Redis::Reply reply = _in_edges->hgetall(Int2HexString(v));
+      for (size_t i = 0; i < reply.size(); i+=2) {
+        edge_list.push_back(edge_type(HexString2Int<edge_id_type>(reply[i]), v, HexString2Int<edge_id_type>(reply[i+1])));
       }
       return edge_list;
-    } // end of in edges
+    } // end of in _edges
 
-    /** \brief Return the edge ids of the edges leaving at v */
-    edge_list_type out_edge_ids(vertex_id_type v) const {
-      DCHECK_LT(v, out_edges->size());
+    /** \brief Return the edge ids of the _edges leaving at v */
+    edge_list_type out_edges(vertex_id_type v) const {
+      DCHECK_LT(v, _out_edges->size());
       edge_list_type edge_list;
-      Redis::Reply reply = out_edges->hkeys(Int2HexString(v));
-      for (auto i = 0; i < reply.size(); ++i) {
-        edge_list.push_back(HexString2Int<edge_id_type>(reply[i]));
+      Redis::Reply reply = _out_edges->hgetall(Int2HexString(v));
+      for (size_t i = 0; i < reply.size(); i+=2) {
+        edge_list.push_back(edge_type(v, HexString2Int<edge_id_type>(reply[i]), HexString2Int<edge_id_type>(reply[i+1])));
       }
       return edge_list;
-    } // end of out edges
-
-    /** \brief Get the set of in vertices of vertex v */
-    std::vector<vertex_id_type> in_vertices(vertex_id_type v) const {
-      DCHECK_LT(v, in_edges->size());
-      std::vector<vertex_id_type> results;
-      Redis::Reply reply = in_edges->hvals(Int2HexString(v));
-      for (auto i = 0; i < reply.size(); ++i) {
-        results.push_back(HexString2Int<vertex_id_type>(reply[i]));
-      }
-      return results;
-    }
-
-    /** \brief Get the set of out vertices of vertex v */
-    std::vector<vertex_id_type> out_vertices(vertex_id_type v) const {
-      DCHECK_LT(v, out_edges->size());
-      std::vector<vertex_id_type> results;
-      Redis::Reply reply = out_edges->hvals(Int2HexString(v));
-      for (auto i = 0; i < reply.size(); ++i) {
-        results.push_back(HexString2Int<vertex_id_type>(reply[i]));
-      }
-      return results;
-    }
-
-
-    /** \brief count the number of times the graph was cleared and rebuilt */
-    size_t get_changeid() const {
-      return changeid;
-    }
+    } // end of out _edges
 
     /** \brief Load the graph from an archive */
     void load(iarchive& arc) {
@@ -502,34 +520,25 @@ namespace graphlab {
       {
         std::vector<VertexData> vertices_;
         arc >> vertices_;
-        for (int i = 0; i < vertices_.size(); ++i) {
+        for (size_t i = 0; i < vertices_.size(); ++i) {
           ASSERT_EQ(i, add_vertex(vertices_[i]));
         }
       }
       {
         std::vector<edge> edges_;
         arc >> edges_;
-        for (int i = 0; i < edges_.size(); ++i) {
+        for (size_t i = 0; i < edges_.size(); ++i) {
           ASSERT_EQ(i, add_edge(edges_[i].source(),
-                                  edges_[i].target(),
-                                  edges_[i].data()));
+                                edges_[i].target(),
+                                edges_[i].data()));
         }
-      }
-      {
-        std::vector<std::vector<edge_id_type> > ignored;
-        arc >> ignored; // in_edges
-        arc >> ignored; // out_edges
       }
       {
         std::vector<vertex_color_type> colors_;
         arc >> colors_;
-        for (int i = 0; i < colors_.size(); ++i) {
+        for (size_t i = 0; i < colors_.size(); ++i) {
           set_color(i, colors_[i]);
         }
-      }
-      {
-        bool finalized;
-        arc >> finalized;
       }
     } // end of load
 
@@ -569,55 +578,16 @@ namespace graphlab {
     void save_adjacency(const std::string& filename) const {
       std::ofstream fout(filename.c_str());
       ASSERT_TRUE(fout.good());
-      vector<string> fields;
+      std::vector<std::string> fields;
       fields.push_back("S");
       fields.push_back("T");
-      for(size_t i = 0; i < edges->size(); ++i) {
-        Reply reply = edges->hmget(Int2HexString(i), fields);
+      for(size_t i = 0; i < _edges->size(); ++i) {
+        Redis::Reply reply = _edges->hmget(Int2HexString(i), fields);
         fout << HexString2Int<vertex_id_type>(reply[0]) << ", " << HexString2Int<vertex_id_type>(reply[1]) << "\n";
         ASSERT_TRUE(fout.good());
       }
       fout.close();
     }
-
-    /**
-     * builds a topological_sort of the graph returning it in topsort.
-     *
-     * \param[out] topsort Resultant topological sort of the graph vertices.
-     *
-     * function will return false if graph is not acyclic.
-     */
-    bool topological_sort(std::vector<vertex_id_type>& topsort) const {
-      topsort.clear();
-      num_vertices = num_vertices();
-      topsort.reserve(num_vertices);
-
-      std::vector<size_t> indeg;
-      indeg.resize(num_vertices);
-      std::queue<vertex_id_type> q;
-      for (size_t i = 0;i < num_vertices; ++i) {
-        indeg[i] = in_edge_ids(i).size();
-        if (indeg[i] == 0) {
-          q.push(i);
-        }
-      }
-
-      while (!q.empty()) {
-        vertex_id_type v = q.front();
-        q.pop();
-        topsort.push_back(v);
-        for(const auto& eid : out_edge_ids(v)) {
-          vertex_id_type destv = target(eid);
-          --indeg[destv];
-          if (indeg[destv] == 0) {
-            q.push(destv);
-          }
-        }
-      }
-
-      if (q.empty() && topsort.size() != num_vertices) return false;
-      return true;
-    } // end of topological sort
 
 
   private:
@@ -647,65 +617,26 @@ namespace graphlab {
             << _target
             << _data;
       }
-    }; // end of edge_data
+    }; // end of edge
 
     // PRIVATE DATA MEMBERS ===================================================>
     /** The vertex data is simply node id -> VALUE */
-    Redis *vertices;
+    Redis *_vertices;
 
     /** The edge data is edge id -> HASH(Source, Destination, Edge) */
-    Redis *edges;
+    Redis *_edges;
 
     /** The in edge data is dest id -> HASH(Source, EdgeID) */
-    Redis *in_edges;
+    Redis *_in_edges;
 
     /** The out edge data is src id -> HASH(Destination, EdgeID) */
-    Redis *out_edges;
+    Redis *_out_edges;
 
     /** The vertex colors specified by the user. **/
     /** The vcolor data is simply node id -> COLOR */
-    Redis *vcolors;
-
-    /** increments whenever the graph is cleared. Used to track the
-     *  changes to the graph structure  */
-    size_t changeid;
+    Redis *_vcolors;
   }; // End of graph
 
-  template <typename T>
-  T HexString2Int(const string& data) {
-    return coerce::as<T>(data, coerce::tag::hex());
-  }
-
-  template <typename T>
-  string Int2HexString(const T& data) {
-    return coerce::as<string>(data, coerce::tag::hex());
-  }
-
-  template<typename VertexData, typename EdgeData>
-  std::ostream& operator<<(std::ostream& out,
-                           const graph<VertexData, EdgeData>& graph) {
-    // out << "Printing vertex data:\n";
-    // for(size_t i = 0; i < graph.num_vertices(); ++i) {
-    //   out << "V_" << i << ": D[" << graph.vertex_data(i) << "]\n";
-    // }
-    // out << "Printing edge data:\n";
-    // for(size_t i = 0; i < graph.num_edges(); ++i) {
-    //   out << "(V_" << graph.source(i) << "-> V_" << graph.target(i) << "): "
-    //       << "D[" << graph.edge_data(i) << "]\n";
-    // }
-    // return out;
-    // Print adjacency List
-    typedef typename graphlab::graph<VertexData, EdgeData>::vertex_id_type
-      vertex_id_type;
-    typedef typename graphlab::graph<VertexData, EdgeData>::edge_id_type
-      edge_id_type;
-    auto num_vertices = graph.num_vertices();
-    for(vertex_id_type vid = 0; vid < num_vertices; ++vid) {
-      for(const auto& eid : graph.out_edge_ids(vid))
-        out << vid << ", " << graph.target(eid) << '\n';
-    }
-    return out;
-  }
 } // end of namespace graphlab
 #include <graphlab/macros_undef.hpp>
 

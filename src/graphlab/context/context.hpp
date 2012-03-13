@@ -1,5 +1,5 @@
-/**  
- * Copyright (c) 2009 Carnegie Mellon University. 
+/**
+ * Copyright (c) 2009 Carnegie Mellon University.
  *     All rights reserved.
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
@@ -22,10 +22,10 @@
 
 /**
  * Also contains code that is Copyright 2011 Yahoo! Inc.  All rights
- * reserved.  
+ * reserved.
  *
  * Contributed under the iCLA for:
- *    Joseph Gonzalez (jegonzal@yahoo-inc.com) 
+ *    Joseph Gonzalez (jegonzal@yahoo-inc.com)
  *
  */
 
@@ -45,13 +45,13 @@ namespace graphlab {
 
 
   /**
-   * This defines a general scope type 
+   * This defines a general scope type
    */
   template<typename Engine>
-  class context : 
-    public icontext<typename Engine::graph_type, 
+  class context :
+    public icontext<typename Engine::graph_type,
                     typename Engine::update_functor_type> {
-  public:   
+  public:
 
     typedef Engine engine_type;
 
@@ -63,24 +63,28 @@ namespace graphlab {
     typedef typename graph_type::vertex_color_type   vertex_color_type;
     typedef typename graph_type::edge_type           edge_type;
     typedef typename graph_type::vertex_data_type    vertex_data_type;
+    typedef typename graph_type::reference_vertex_data_type  reference_vertex_data_type;
+    typedef typename graph_type::const_reference_vertex_data_type  const_reference_vertex_data_type;
     typedef typename graph_type::edge_data_type      edge_data_type;
+    typedef typename graph_type::reference_edge_data_type  reference_edge_data_type;
+    typedef typename graph_type::const_reference_edge_data_type  const_reference_edge_data_type;
     typedef typename graph_type::edge_list_type      edge_list_type;
-   
 
 
-    
-  private:    
+
+
+  private:
     /** a pointer to the engine */
     engine_type* engine_ptr;
     /** A pointer to the underlying graph datastructure */
-    graph_type* graph_ptr;   
-    
+    graph_type* graph_ptr;
+
     /** The vertex that this graph represents*/
     vertex_id_type vid;
 
     /** The consistency model that this context ensures */
     consistency_model _consistency;
- 
+
   public:
 
     // Cache related members --------------------------------------------------
@@ -91,12 +95,12 @@ namespace graphlab {
       uint16_t reads, writes;
       cache_entry() : reads(0), writes(0) { }
     };
-    typedef std::map<vertex_id_type, cache_entry> cache_map_type;  
+    typedef std::map<vertex_id_type, cache_entry> cache_map_type;
 
 
   public:
-    
-    /** 
+
+    /**
      * \brief construct an icontext from a graph This is called by the
      * engine when creating an icontext to be passed into an update
      * function.
@@ -105,11 +109,11 @@ namespace graphlab {
             graph_type* graph_ptr = NULL,
             vertex_id_type vid = -1,
             consistency_model consistency = EDGE_CONSISTENCY) :
-      engine_ptr(engine_ptr), graph_ptr(graph_ptr), 
+      engine_ptr(engine_ptr), graph_ptr(graph_ptr),
       vid(vid), _consistency(consistency) { }
-    
-    
-    void init(const vertex_id_type vertex, consistency_model consistency) {             
+
+
+    void init(const vertex_id_type vertex, consistency_model consistency) {
       vid = vertex; _consistency = consistency;
       ASSERT_TRUE(graph_ptr != NULL);
       ASSERT_TRUE(engine_ptr != NULL);
@@ -117,54 +121,51 @@ namespace graphlab {
 
     size_t num_vertices() const { return graph_ptr->num_vertices(); }
     size_t num_edges() const { return graph_ptr->num_edges(); }
-    size_t num_updates() const { return engine_ptr->last_update_count(); } 
+    size_t num_updates() const { return engine_ptr->last_update_count(); }
     void terminate() { engine_ptr->stop(); }
 
     size_t elapsed_time() const { return engine_ptr->elapsed_time(); }
-   
 
-    vertex_data_type& vertex_data(const vertex_id_type vid) {
+
+    reference_vertex_data_type vertex_data(const vertex_id_type vid) {
       return graph_ptr->vertex_data(vid);
     }
 
-    const vertex_data_type& vertex_data(const vertex_id_type vid) const {
+    const_reference_vertex_data_type vertex_data(const vertex_id_type vid) const {
       return graph_ptr->vertex_data(vid);
     }
 
+    const_reference_vertex_data_type const_vertex_data(const vertex_id_type vid) const {
+      return graph_ptr->vertex_data(vid);
+    }
 
-
-    vertex_data_type& vertex_data() {
+    reference_vertex_data_type vertex_data() {
       return vertex_data(vid);
     }
 
-
-    const vertex_data_type& vertex_data() const {
+    const_reference_vertex_data_type vertex_data() const {
       return vertex_data(vid);
     }
 
-    const vertex_data_type& const_vertex_data() const {
+    const_reference_vertex_data_type const_vertex_data() const {
       return vertex_data(vid);
     }
 
-    const vertex_data_type& const_vertex_data(vertex_id_type vid) const {
-      return vertex_data(vid);
+    reference_edge_data_type edge_data(const edge_type& edge) {
+      return graph_ptr->edge_data(edge);
     }
 
-    edge_data_type& edge_data(const edge_type& edge) {
-      return graph_ptr->edge_data(edge);  
-    }
-
-    edge_data_type& edge_data(vertex_id_type source, 
+    reference_edge_data_type edge_data(vertex_id_type source,
                               vertex_id_type target) {
       return graph_ptr->edge_data(source, target);
     }
 
-    const edge_data_type& const_edge_data(const edge_type& edge) const {
-      return graph_ptr->edge_data(edge);  
+    const_reference_edge_data_type const_edge_data(const edge_type& edge) const {
+      return graph_ptr->edge_data(edge);
     }
 
-    const edge_data_type& const_edge_data(vertex_id_type source,
-                                         vertex_id_type target) const {
+    const_reference_edge_data_type const_edge_data(vertex_id_type source,
+                                                   vertex_id_type target) const {
       return graph_ptr->edge_data(source, target);
     }
 
@@ -173,24 +174,23 @@ namespace graphlab {
 
     vertex_color_type color() const { return graph_ptr->color(vid); }
 
-    
     vertex_id_type vertex_id() const { return vid; }
 
     //! Get the source vertex of the edge id argument
     vertex_id_type source(const edge_type& edge) const {
-      return graph_ptr->source(edge);
+      return edge.source();
     }
 
     //! get the target vertex of the edge id argument
     vertex_id_type target(const edge_type& edge) const {
-      return graph_ptr->target(edge);
+      return edge.target();
     }
 
-    //! Get the rerverse edge 
-    edge_type reverse_edge(const edge_type& edge) const {      
+    //! Get the rerverse edge
+    edge_type reverse_edge(const edge_type& edge) const {
       return graph_ptr->reverse_edge(edge);
     }
-    
+
     //! Find an edge using the source and target pair
     edge_type find(vertex_id_type source,
                    vertex_id_type target) const {
@@ -204,8 +204,8 @@ namespace graphlab {
     edge_list_type in_edges(vertex_id_type v) const {
       return graph_ptr->in_edges(v);
     }
-    size_t num_in_edges(vertex_id_type v) const { 
-      return graph_ptr->num_in_edges(v); 
+    size_t num_in_edges(vertex_id_type v) const {
+      return graph_ptr->num_in_edges(v);
     }
 
 
@@ -219,26 +219,26 @@ namespace graphlab {
     }
 
     //! Get the consistency model under which this context was acquired
-    consistency_model consistency() const { 
+    consistency_model consistency() const {
       return _consistency;
     }
-    
-    void schedule(const vertex_id_type& vertex, 
+
+    void schedule(const vertex_id_type& vertex,
                   const update_functor_type& update_fun) {
       engine_ptr->schedule(vertex, update_fun);
     }
 
-    void schedule_in_neighbors(const vertex_id_type& vertex, 
+    void schedule_in_neighbors(const vertex_id_type& vertex,
                                const update_functor_type& update_fun) {
       engine_ptr->schedule_in_neighbors(vertex, update_fun);
     }
 
-    void schedule_out_neighbors(const vertex_id_type& vertex, 
+    void schedule_out_neighbors(const vertex_id_type& vertex,
                                const update_functor_type& update_fun) {
       engine_ptr->schedule_out_neighbors(vertex, update_fun);
     }
 
-    void schedule_neighbors(const vertex_id_type& vertex, 
+    void schedule_neighbors(const vertex_id_type& vertex,
                             const update_functor_type& update_fun) {
       schedule_in_neighbors(vertex, update_fun);
       schedule_out_neighbors(vertex, update_fun);
@@ -247,21 +247,21 @@ namespace graphlab {
 
   protected:
 
-    void acquire_lock(const std::string& key, size_t index = 0) { 
-      engine_ptr->acquire_global_lock(key, index); 
+    void acquire_lock(const std::string& key, size_t index = 0) {
+      engine_ptr->acquire_global_lock(key, index);
     }
 
-    void release_lock(const std::string& key, size_t index = 0) { 
-      engine_ptr->release_global_lock(key, index); 
+    void release_lock(const std::string& key, size_t index = 0) {
+      engine_ptr->release_global_lock(key, index);
     }
 
     void commit_change(const std::string& key, size_t index = 0) { }
 
-    void get_global(const std::string& key,                                       
+    void get_global(const std::string& key,
                     graphlab::any_vector*& ret_vec_ptr,
                     bool& ret_is_const) {
       engine_ptr->get_global(key, ret_vec_ptr, ret_is_const);
-    } // end of get_any_pair    
+    } // end of get_any_pair
 
 
     bool disable_caching;
