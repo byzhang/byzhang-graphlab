@@ -29,6 +29,8 @@
 #include <graphlab/rpc/dc_dist_object.hpp>
 #include <graphlab/util/mpi_tools.hpp>
 
+
+#include <graphlab/macros_def.hpp>
 namespace graphlab {
 
 
@@ -110,6 +112,32 @@ namespace graphlab {
       return success;
     } // end of recv
 
+
+    /**
+     * Returns the number of elements to recv
+     */
+    size_t size() const {
+      typedef typename std::deque< buffer_record >::const_iterator iterator;
+      recv_lock.lock();
+      size_t count = 0;
+      foreach(const buffer_record& rec, recv_buffers) 
+        count += rec.buffer.size();
+      recv_lock.unlock();
+      return count;
+    } // end of size
+
+    void clear() {
+      foreach (buffer_type& buffer, send_buffers) {
+        buffer_type().swap(buffer);
+      }
+      std::vector<buffer_type >().swap(send_buffers);
+
+      foreach (buffer_record& buffer_rec, recv_buffers) {
+        buffer_type().swap(buffer_rec.buffer);
+      }
+      std::deque<buffer_record>().swap(recv_buffers);
+    }
+
   private:
     void rpc_recv(procid_t src_proc, buffer_type& buffer) {
       recv_lock.lock();
@@ -124,7 +152,7 @@ namespace graphlab {
 
 
 }; // end of graphlab namespace
-
+#include <graphlab/macros_undef.hpp>
 
 #endif
 

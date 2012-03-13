@@ -93,6 +93,9 @@ typedef graphlab::graph3<vertex_data, edge_data> graph_type;
 
 void init_lanczos(graph_type * g, bipartite_graph_descriptor & info){
 
+  if (g->num_vertices() == 0)
+     logstream(LOG_FATAL)<<"Failed to load graph. Aborting" << std::endl;
+
   data_size = nsv + nv+1 + max_iter;
 #pragma omp parallel for
   for (int i=0; i< info.total(); i++)
@@ -298,8 +301,8 @@ printf("\n");
 
   if (save_vectors){
      for (int i=0; i< nconv; i++){
-        write_output_vector(datafile + ".U." + boost::lexical_cast<std::string>(i), format, U[i].to_vec(), false, "GraphLab v2 SVD output. This file contains eigenvector number " + boost::lexical_cast<std::string>(i) + " of the matrix U\n");
-        write_output_vector(datafile + ".V." + boost::lexical_cast<std::string>(i), format, V[i].to_vec(), false, "GraphLab v2 SVD output. This file contains eigenvector number " + boost::lexical_cast<std::string>(i) + " of the matirx V'\n");
+        write_output_vector(datafile + ".U." + boost::lexical_cast<std::string>(i), format, U[i].to_vec(), false, "GraphLab v2 SVD output. This file contains eigenvector number " + boost::lexical_cast<std::string>(i) + " of the matrix U");
+        write_output_vector(datafile + ".V." + boost::lexical_cast<std::string>(i), format, V[i].to_vec(), false, "GraphLab v2 SVD output. This file contains eigenvector number " + boost::lexical_cast<std::string>(i) + " of the matrix V'");
      }
   }
   return sigma;
@@ -394,13 +397,13 @@ int main(int argc,  char *argv[]) {
   load_graph(datafile, format, info, core.graph(), MATRIX_MARKET_3, false, false);
   core.graph().finalize();
 #else  
-  if (nodes == 0)
-  load_graph(datafile, format, info, core.graph(), MATRIX_MARKET_3, false, true);
-  else {
+  if (nodes == 0){
+    load_graph(datafile, format, info, core.graph(), MATRIX_MARKET_3, false, true);
+   } else {  
      info.rows = info.cols = nodes;
-     core.graph().load_directed(datafile, false, no_edge_data);
-     info.nonzeros = core.graph().num_edges();
-  }
+   }
+   core.graph().load_directed(datafile, false, no_edge_data);
+   info.nonzeros = core.graph().num_edges();
 #endif
   init_lanczos(&core.graph(), info);
   init_math(&core.graph(), &core, info, ortho_repeats, update_function);
@@ -420,7 +423,7 @@ int main(int argc,  char *argv[]) {
 
   //vec ret = fill_output(&core.graph(), bipartite_graph_descriptor, JACOBI_X);
 
-  write_output_vector(datafile + ".singular_values", format, singular_values,false, "%GraphLab SVD Solver library. This file contains the singular values.\n");
+  write_output_vector(datafile + ".singular_values", format, singular_values,false, "%GraphLab SVD Solver library. This file contains the singular values.");
 
   if (unittest == 1){
     assert(errest.size() == 3);

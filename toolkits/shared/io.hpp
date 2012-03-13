@@ -79,7 +79,9 @@ FILE * open_file(const char * name, const char * mode, bool optional = false){
   return f;
 }
 
-
+FILE * open_file(const std::string name, const char * mode, bool optional = false){
+   return open_file(name.c_str(), mode, optional);
+}
 /*
  * list all existing files inside a specificed directory
  */
@@ -584,7 +586,10 @@ void save_matrix_market_format_vector(const std::string datafile, const vec & ou
     mm_write_banner(f, matcode); 
     if (comment.size() > 0) // add a comment to the matrix market header
       fprintf(f, "%c%s\n", '%', comment.c_str());
+    if (issparse)
     mm_write_mtx_crd_size(f, output.size(), 1, output.size());
+    else
+    mm_write_mtx_array_size(f, output.size(), 1);
 
     for (int j=0; j<(int)output.size(); j++){
       write_row(j+1, 1, output[j], f, issparse);
