@@ -1,5 +1,5 @@
-/**  
- * Copyright (c) 2009 Carnegie Mellon University. 
+/**
+ * Copyright (c) 2009 Carnegie Mellon University.
  *     All rights reserved.
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
@@ -46,7 +46,7 @@ double ACCURACY = 1e-5;
 /**
  * The factorized page rank update function
  */
-class pagerank_update : 
+class pagerank_update :
   public graphlab::iupdate_functor<graph_type, pagerank_update> {
   double prio;
 public:
@@ -54,24 +54,24 @@ public:
   inline double priority() const { return prio; }
   inline void operator+=(const pagerank_update& other) { prio += other.prio; }
   void operator()(icontext_type& context) {
-    vertex_data& vdata = context.vertex_data(); ++vdata.nupdates;
+    icontext_type::reference_vertex_data_type vdata = context.vertex_data(); ++vdata.nupdates;
     // Compute weighted sum of neighbors
     double sum = 0;
     /* Iterate over edge_id_list and get source is slow in graph2 */
-    foreach( edge_type edge, context.in_edges() ) 
-      sum += context.const_edge_data(edge).weight * 
+    foreach( edge_type edge, context.in_edges() )
+      sum += context.const_edge_data(edge).weight *
         context.const_vertex_data(edge.source()).value;
     // Add random reset probability
     vdata.old_value = vdata.value;
     vdata.value = RESET_PROB + (1-RESET_PROB)*sum;
-    foreach(edge_type edge, context.out_edges()) {    
-      const double residual = context.const_edge_data(edge).weight * 
+    foreach(edge_type edge, context.out_edges()) {
+      const double residual = context.const_edge_data(edge).weight *
         std::fabs(vdata.value - vdata.old_value);
       // If the neighbor changed sufficiently add to scheduler.
-      if(residual > ACCURACY) 
-        context.schedule(edge.target(), pagerank_update(residual));      
+      if(residual > ACCURACY)
+        context.schedule(edge.target(), pagerank_update(residual));
     }
-  } // end of operator()  
+  } // end of operator()
 }; // end of pagerank update functor
 
 
@@ -101,7 +101,7 @@ int main(int argc, char** argv) {
     return EXIT_FAILURE;
   }
   std::cout << "Termination bound:  " << ACCURACY << std::endl
-            << "Reset probability:  " << RESET_PROB << std::endl;  
+            << "Reset probability:  " << RESET_PROB << std::endl;
   // Setup the GraphLab execution core and load graph -------------------------
   graphlab::core<graph_type, pagerank_update> core;
   core.set_options(clopts); // attach the command line options to the core
@@ -117,23 +117,23 @@ int main(int argc, char** argv) {
   core.schedule_all(pagerank_update(1));
   std::cout << "Running pagerank!" << std::endl;
   const double runtime = core.start();  // Run the engine
-  std::cout << "Graphlab finished, runtime: " << runtime 
+  std::cout << "Graphlab finished, runtime: " << runtime
             << " seconds." << std::endl;
-  std::cout << "Updates executed: " << core.last_update_count() 
+  std::cout << "Updates executed: " << core.last_update_count()
             << std::endl;
-  std::cout << "Update Rate (updates/second): " 
+  std::cout << "Update Rate (updates/second): "
             << core.last_update_count() / runtime
             << std::endl;
 
- 
+
 
   // Output Results -----------------------------------------------------------
   // Output the top 5 pages
   std::vector<graph_type::vertex_id_type> top_pages;
   get_top_pages(core.graph(), 5, top_pages);
   for(size_t i = 0; i < top_pages.size(); ++i) {
-    std::cout << std::setw(10) << top_pages[i] << ":\t" << std::setw(10) 
-              << core.graph().vertex_data(top_pages[i]).value << std::setw(10) 
+    std::cout << std::setw(10) << top_pages[i] << ":\t" << std::setw(10)
+              << core.graph().vertex_data(top_pages[i]).value << std::setw(10)
               << core.graph().vertex_data(top_pages[i]).nupdates << std::endl;
   }
 

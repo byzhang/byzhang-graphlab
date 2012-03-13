@@ -1,5 +1,5 @@
-/**  
- * Copyright (c) 2009 Carnegie Mellon University. 
+/**
+ * Copyright (c) 2009 Carnegie Mellon University.
  *     All rights reserved.
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
@@ -41,7 +41,7 @@ DECLARE_TRACER(matproduct)
  *
  *  Implementation of the Lanczos algorithm, as given in:
  *  http://en.wikipedia.org/wiki/Lanczos_algorithm
- * 
+ *
  *  Code written by Danny Bickson, CMU, June 2011
  * */
 
@@ -59,7 +59,7 @@ double regularization = 0;
 double ortho_repeats = 3;
 bool update_function = false;
 bool save_vectors = false;
-std::string datafile; 
+std::string datafile;
 std::string format = "matrixmarket";
 int nodes = 0;
 
@@ -70,7 +70,7 @@ struct vertex_data {
   vertex_data(){}
   void add_self_edge(double value) { A_ii = value; }
 
-  void set_val(double value, int field_type) { 
+  void set_val(double value, int field_type) {
     pvec[field_type] = value;
   }
   //double get_output(int field_type){ return pred_x; }
@@ -104,9 +104,9 @@ void init_lanczos(graph_type * g, bipartite_graph_descriptor & info){
 
 
 
-vec lanczos(graphlab::core<graph_type, Axb> & glcore, bipartite_graph_descriptor & info, timer & mytimer, vec & errest, 
+vec lanczos(graphlab::core<graph_type, Axb> & glcore, bipartite_graph_descriptor & info, timer & mytimer, vec & errest,
             const std::string & vecfile){
-   
+
 
    int nconv = 0;
    int its = 1;
@@ -146,7 +146,7 @@ vec lanczos(graphlab::core<graph_type, Axb> & glcore, bipartite_graph_descriptor
 
      U[k] = V[k]*A._transpose();
      orthogonalize_vs_all(U, k, alpha(0));
-     //alpha(0)=norm(U[k]).toDouble(); 
+     //alpha(0)=norm(U[k]).toDouble();
      PRINT_VEC3("alpha", alpha, 0);
      //U[k] = U[k]/alpha(0);
 
@@ -156,11 +156,11 @@ vec lanczos(graphlab::core<graph_type, Axb> & glcore, bipartite_graph_descriptor
 
        V[i]=U[i-1]*A;
        orthogonalize_vs_all(V, i, beta(i-k-1));
-      
+
        //beta(i-k-1)=norm(V[i]).toDouble();
        //V[i] = V[i]/beta(i-k-1);
-       PRINT_VEC3("beta", beta, i-k-1); 
-      
+       PRINT_VEC3("beta", beta, i-k-1);
+
        U[i] = V[i]*A._transpose();
        orthogonalize_vs_all(U, i, alpha(i-k));
        //alpha(i-k)=norm(U[i]).toDouble();
@@ -187,7 +187,7 @@ vec lanczos(graphlab::core<graph_type, Axb> & glcore, bipartite_graph_descriptor
   PRINT_MAT2("PT",eye(n));
   PRINT_VEC2("alpha",alpha);
   PRINT_VEC2("beta",beta);
- 
+
   mat T=diag(alpha);
   for (int i=0; i<n-1; i++)
     set_val(T, i, i+1, beta(i));
@@ -233,14 +233,14 @@ vec lanczos(graphlab::core<graph_type, Axb> & glcore, bipartite_graph_descriptor
 
   vec v;
   if (!finished){
-    vec swork=get_col(PT,kk); 
+    vec swork=get_col(PT,kk);
     PRINT_MAT2("swork", swork);
     v = zeros(size(A,1));
     for (int ttt=nconv; ttt < nconv+n; ttt++){
       v = v+swork(ttt-nconv)*(V[ttt].to_vec());
     }
     PRINT_VEC2("svd->V",V[nconv]);
-    PRINT_VEC2("v[0]",v); 
+    PRINT_VEC2("v[0]",v);
   }
 
 
@@ -301,15 +301,15 @@ printf("\n");
 
   if (save_vectors){
      for (int i=0; i< nconv; i++){
-        write_output_vector(datafile + ".U." + boost::lexical_cast<std::string>(i), format, U[i].to_vec(), false, "GraphLab v2 SVD output. This file contains eigenvector number " + boost::lexical_cast<std::string>(i) + " of the matrix U");
-        write_output_vector(datafile + ".V." + boost::lexical_cast<std::string>(i), format, V[i].to_vec(), false, "GraphLab v2 SVD output. This file contains eigenvector number " + boost::lexical_cast<std::string>(i) + " of the matrix V'");
+        write_output_vector(datafile + ".U." + boost::lexical_cast<std::string>(i), ::format, U[i].to_vec(), false, "GraphLab v2 SVD output. This file contains eigenvector number " + boost::lexical_cast<std::string>(i) + " of the matrix U");
+        write_output_vector(datafile + ".V." + boost::lexical_cast<std::string>(i), ::format, V[i].to_vec(), false, "GraphLab v2 SVD output. This file contains eigenvector number " + boost::lexical_cast<std::string>(i) + " of the matrix V'");
      }
   }
   return sigma;
 }
 
 int main(int argc,  char *argv[]) {
-  
+
   global_logger().set_log_level(LOG_INFO);
   global_logger().set_log_to_console(true);
 
@@ -323,12 +323,12 @@ int main(int argc,  char *argv[]) {
   clopts.add_positional("data");
   clopts.attach_option("initial_vector", &vecfile, vecfile,"optional initial vector");
   clopts.attach_option("debug", &debug, debug, "Display debug output.");
-  clopts.attach_option("unittest", &unittest, unittest, 
+  clopts.attach_option("unittest", &unittest, unittest,
 		       "unit testing 0=None, 1=3x3 matrix");
   clopts.attach_option("max_iter", &max_iter, max_iter, "max iterations");
   clopts.attach_option("ortho_repeats", &ortho_repeats, ortho_repeats, "orthogonalization iterations. 1 = low accuracy but fast, 2 = medium accuracy, 3 = high accuracy but slow.");
   clopts.attach_option("nv", &nv, nv, "Number of vectors in each iteration");
-  clopts.attach_option("nsv", &nsv, nsv, "Number of requested singular values to comptue"); 
+  clopts.attach_option("nsv", &nsv, nsv, "Number of requested singular values to comptue");
   clopts.attach_option("regularization", &regularization, regularization, "regularization");
   clopts.attach_option("tol", &tol, tol, "convergence threshold");
   clopts.attach_option("update_function", &update_function, update_function, "true = use update function. false = user aggregator");
@@ -346,11 +346,11 @@ int main(int argc,  char *argv[]) {
 
   logstream(LOG_WARNING)
     << "Eigen detected. (This is actually good news!)" << std::endl;
-  logstream(LOG_INFO) 
-    << "GraphLab V2 matrix factorization library code by Danny Bickson, CMU" 
-    << std::endl 
-    << "Send comments and bug reports to danny.bickson@gmail.com" 
-    << std::endl 
+  logstream(LOG_INFO)
+    << "GraphLab V2 matrix factorization library code by Danny Bickson, CMU"
+    << std::endl
+    << "Send comments and bug reports to danny.bickson@gmail.com"
+    << std::endl
     << "Currently implemented algorithms are: Lanczos" << std::endl;
 
 
@@ -358,7 +358,7 @@ int main(int argc,  char *argv[]) {
   graphlab::core<graph_type, Axb> core;
   omp_set_num_threads(clopts.get_ncpus());
   core.set_options(clopts); // Set the engine options
-  
+
 
 #ifndef UPDATE_FUNC_IMPL
    Axb mathops;
@@ -367,7 +367,7 @@ int main(int argc,  char *argv[]) {
 
   //unit testing
   if (unittest == 1){
-    datafile = "gklanczos_testA"; 
+    datafile = "gklanczos_testA";
     vecfile = "gklanczos_testA_v0";
     nsv = 3; nv = 3;
     debug = true;
@@ -394,12 +394,12 @@ int main(int argc,  char *argv[]) {
 
   std::cout << "Load matrix " << datafile << std::endl;
 #ifdef USE_GRAPH2
-  load_graph(datafile, format, info, core.graph(), MATRIX_MARKET_3, false, false);
+  load_graph(datafile, ::format, info, core.graph(), MATRIX_MARKET_3, false, false);
   core.graph().finalize();
-#else  
+#else
   if (nodes == 0){
-    load_graph(datafile, format, info, core.graph(), MATRIX_MARKET_3, false, true);
-   } else {  
+    load_graph(datafile, ::format, info, core.graph(), MATRIX_MARKET_3, false, true);
+   } else {
      info.rows = info.cols = nodes;
    }
    core.graph().load_directed(datafile, false, no_edge_data);
@@ -409,21 +409,21 @@ int main(int argc,  char *argv[]) {
   init_math(&core.graph(), &core, info, ortho_repeats, update_function);
   if (vecfile.size() > 0){
     std::cout << "Load inital vector from file" << vecfile << std::endl;
-    load_vector(vecfile, format, info, core.graph(), 0, true, false);
-  }  
- 
-  timer mytimer; mytimer.start(); 
+    load_vector(vecfile, ::format, info, core.graph(), 0, true, false);
+  }
+
+  timer mytimer; mytimer.start();
   vec errest;
- 
+
   vec singular_values = lanczos(core, info, mytimer, errest, vecfile);
- 
+
   std::cout << "Lanczos finished in " << mytimer.current_time() << std::endl;
-  std::cout << "\t Updates: " << core.last_update_count() << " per node: " 
+  std::cout << "\t Updates: " << core.last_update_count() << " per node: "
      << core.last_update_count() / core.graph().num_vertices() << std::endl;
 
   //vec ret = fill_output(&core.graph(), bipartite_graph_descriptor, JACOBI_X);
 
-  write_output_vector(datafile + ".singular_values", format, singular_values,false, "%GraphLab SVD Solver library. This file contains the singular values.");
+  write_output_vector(datafile + ".singular_values", ::format, singular_values,false, "%GraphLab SVD Solver library. This file contains the singular values.");
 
   if (unittest == 1){
     assert(errest.size() == 3);

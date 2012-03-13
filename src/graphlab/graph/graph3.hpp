@@ -551,8 +551,7 @@ namespace graphlab {
         Only valid if compute_coloring() is called first.*/
     void set_color(vertex_id_type vertex, const vertex_color_type& data) {
       ASSERT_LT(vertex, num_nodes);
-       assert(false); //not implemented yet
-      return _color;
+      assert(false); //not implemented yet
     }
 
     vertex_color_type get_color(vertex_id_type vid) const{
