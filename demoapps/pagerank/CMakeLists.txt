@@ -1,4 +1,6 @@
 project(GraphLab)
+link_libraries(hiredis)
 add_graphlab_executable(pagerank pagerank.cpp)
 add_graphlab_executable(advanced_pagerank advanced_pagerank.cpp)
-
+#set_target_properties(pagerank PROPERTIES LINK_FLAGS -lhiredis)
+#set_target_properties(advanced_pagerank PROPERTIES LINK_FLAGS -lhiredis)
