@@ -54,13 +54,15 @@ public:
   inline double priority() const { return prio; }
   inline void operator+=(const pagerank_update& other) { prio += other.prio; }
   void operator()(icontext_type& context) {
-    icontext_type::reference_vertex_data_type vdata = context.vertex_data(); ++vdata.nupdates;
+    icontext_type::reference_vertex_data_type vdata = context.vertex_data();
+    ++vdata.nupdates;
     // Compute weighted sum of neighbors
     double sum = 0;
     /* Iterate over edge_id_list and get source is slow in graph2 */
-    foreach( edge_type edge, context.in_edges() )
+    foreach( edge_type edge, context.in_edges() ) {
       sum += context.const_edge_data(edge).weight *
         context.const_vertex_data(edge.source()).value;
+    }
     // Add random reset probability
     vdata.old_value = vdata.value;
     vdata.value = RESET_PROB + (1-RESET_PROB)*sum;
@@ -76,7 +78,6 @@ public:
 
 
 
-
 int main(int argc, char** argv) {
   global_logger().set_log_level(LOG_DEBUG);
   global_logger().set_log_to_console(true);
@@ -85,10 +86,14 @@ int main(int argc, char** argv) {
   std::string graph_file;
   std::string format = "metis";
   std::string update_type = "basic";
+  std::string redis_server = "127.0.0.1:6379";
   clopts.attach_option("graph", &graph_file, graph_file,
                        "The graph file.  If none is provided "
                        "then a toy graph will be created");
   clopts.add_positional("graph");
+  clopts.attach_option("redis_server",
+                       &redis_server, redis_server,
+                       "The redis server ip:port");
   clopts.attach_option("format",
                        &format, format,
                        "The graph file format: {metis, snap, tsv}");
@@ -105,9 +110,18 @@ int main(int argc, char** argv) {
   // Setup the GraphLab execution core and load graph -------------------------
   graphlab::core<graph_type, pagerank_update> core;
   core.set_options(clopts); // attach the command line options to the core
-  std::cout << "Loading graph from file" << std::endl;
-  const bool success = graphlab::graph_ops::
-    load_structure(graph_file, format, core.graph());
+  std::cout << "Loading graph from file" << graph_file << std::endl;
+
+  std::vector<std::string> strs;
+  boost::split(strs, redis_server, boost::is_any_of(":"));
+  ASSERT_EQ(2, strs.size());
+  const char* host = strs[0].c_str();
+  int port = atoi(strs[1].c_str());
+  graphlab::redis_graph<vertex_data, edge_data>::redis_server server1(host, port, 0), server2(host, port, 1), server3(host, port, 2), server4(host, port, 3), server5(host, port, 4);
+  core.graph().init(server1, server2, server3, server4, server5);
+  core.graph().clear();
+
+  const bool success = graphlab::graph_ops::load_structure(graph_file, format, core.graph());
   if(!success) {
     std::cout << "Error in reading file: " << graph_file << std::endl;
   }
@@ -124,8 +138,6 @@ int main(int argc, char** argv) {
   std::cout << "Update Rate (updates/second): "
             << core.last_update_count() / runtime
             << std::endl;
-
-
 
   // Output Results -----------------------------------------------------------
   // Output the top 5 pages

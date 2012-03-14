@@ -142,7 +142,6 @@ namespace graphlab {
     typedef typename Graph::const_reference_edge_data_type const_reference_edge_data_type;
     /** This class represents an edge with source(), target(), edge(), and empty() */
     typedef typename Graph::edge_type edge_type;
-
     /** This class represents a lazy list of edge_type. */
     typedef typename Graph::edge_list_type edge_list_type;
 
@@ -152,6 +151,7 @@ namespace graphlab {
   public:
 
     // METHODS =================================================================>
+    Graph* base_graph() { return base_graph_ptr; }
     /**
      * \brief Resets the graph state.
      */

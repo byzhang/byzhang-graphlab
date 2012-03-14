@@ -91,7 +91,7 @@ namespace graphlab {
 
      <h2> Graph Creation </h2>
 
-     Vertices and _edges are added using the graph::add_vertex()
+     Vertices and edges are added using the graph::add_vertex()
      and graph::add_edge() member functions:
 
 
@@ -103,7 +103,7 @@ namespace graphlab {
 
      The functions return the id's of the added vertex and edge
      respectively.  An edge can only be added if both the source and
-     target vertex id's are already in the graph. Duplicate _edges are not
+     target vertex id's are already in the graph. Duplicate edges are not
      supported and may result in undefined behavior.
   */
   template<typename VertexData, typename EdgeData>
@@ -131,7 +131,7 @@ namespace graphlab {
       const char *host;
       int port;
       int db;
-      redis_server(const char *host_, int port_=6379, int db_=0) {
+      redis_server(const char *host_="127.0.0.1", int port_=6379, int db_=0) {
         host = host_;
         port = port_;
         db = db_;
@@ -256,12 +256,32 @@ namespace graphlab {
     {
     }
 
+    redis_graph(const redis_graph& g)
+      : _vertices(NULL)
+      , _vcolors(NULL)
+      , _edges(NULL)
+      , _in_edges(NULL)
+      , _out_edges(NULL)
+      , _vertex_server(g._vertex_server)
+      , _color_server(g._color_server)
+      , _edge_server(g._edge_server)
+      , _in_edge_server(g._in_edge_server)
+      , _in_edge_server(g._out_edge_server)
+    {
+      init(_vertex_server, _edge_server, _in_edge_server, _out_edge_server, _color_server);
+    }
+
     void init(const redis_server& vertex_server,
               const redis_server& edge_server,
               const redis_server& in_edge_server,
               const redis_server& out_edge_server,
               const redis_server& color_server) {
       // TODO: check/handle the same server address.
+      _vertex_server = vertex_server;
+      _color_server = color_server;
+      _edge_server = edge_server;
+      _in_edge_server = in_edge_server;
+      _out_edge_server = out_edge_server;
       _vertices = new Redis(vertex_server.host, vertex_server.port);
       _vcolors = new Redis(color_server.host, color_server.port);
       _edges = new Redis(edge_server.host, edge_server.port);
@@ -299,12 +319,15 @@ namespace graphlab {
 
     /** \brief Get the number of _vertices */
     size_t num_vertices() const {
+      if (_vertices == NULL) {
+        return 0;
+      }
       return _vertices->size();
     } // end of num _vertices
 
     /** \brief Get the number of _vertices local to this machine */
     size_t local_vertices() const {
-      return _vertices->size();
+      return num_vertices();
     } // end of num _vertices
 
     /** \brief Get the number of _edges */
@@ -342,13 +365,13 @@ namespace graphlab {
     vertex_id_type add_vertex(const VertexData& vdata = VertexData() ) {
       vertex_id_type id = 0;
       while (true) {
-        id = _vertices->size();
+        id = num_vertices();
         bool ok = _vertices->setnx(Int2HexString(id), serialize_to_string(vdata));
         if (ok) {
           break;
         }
       }
-      ASSERT_EQ(1, _vcolors->setnx(Int2HexString(id), 0));
+      ASSERT_EQ(1, _vcolors->setnx(Int2HexString(id), serialize_to_string(0)));
       return id;
     } // End of add vertex;
 
@@ -387,7 +410,7 @@ namespace graphlab {
       // Add the edge to the set of edge data (this copies the edata)
       edge_id_type edge_id = 0;
       while (true) {
-        edge_id = _edges->size();
+        edge_id = num_edges();
         bool ok = _edges->hsetnx(Int2HexString(edge_id), "E", serialize_to_string(edata));
         if (ok) {
           break;
@@ -400,7 +423,6 @@ namespace graphlab {
       edge.push_back(make_pair("T", target_str));
       auto edge_id_str = Int2HexString(edge_id);
       _edges->hmset(edge_id_str, edge);
-
       // Add the edge id to in and out edge maps
       _in_edges->hset(target_str, source_str, edge_id_str);
       _out_edges->hset(source_str, target_str, edge_id_str);
@@ -494,7 +516,6 @@ namespace graphlab {
 
     /** \brief Return the edge ids of the _edges arriving at v */
     edge_list_type in_edges(vertex_id_type v) const {
-      DCHECK_LT(v, _in_edges->size());
       edge_list_type edge_list;
       Redis::Reply reply = _in_edges->hgetall(Int2HexString(v));
       for (size_t i = 0; i < reply.size(); i+=2) {
@@ -505,7 +526,6 @@ namespace graphlab {
 
     /** \brief Return the edge ids of the _edges leaving at v */
     edge_list_type out_edges(vertex_id_type v) const {
-      DCHECK_LT(v, _out_edges->size());
       edge_list_type edge_list;
       Redis::Reply reply = _out_edges->hgetall(Int2HexString(v));
       for (size_t i = 0; i < reply.size(); i+=2) {
@@ -623,6 +643,10 @@ namespace graphlab {
     /** The vertex data is simply node id -> VALUE */
     Redis *_vertices;
 
+    /** The vertex colors specified by the user. **/
+    /** The vcolor data is simply node id -> COLOR */
+    Redis *_vcolors;
+
     /** The edge data is edge id -> HASH(Source, Destination, Edge) */
     Redis *_edges;
 
@@ -632,9 +656,7 @@ namespace graphlab {
     /** The out edge data is src id -> HASH(Destination, EdgeID) */
     Redis *_out_edges;
 
-    /** The vertex colors specified by the user. **/
-    /** The vcolor data is simply node id -> COLOR */
-    Redis *_vcolors;
+    redis_server _vertex_server, _color_server, _edge_server, _in_edge_server, _out_edge_server;
   }; // End of graph
 
 } // end of namespace graphlab

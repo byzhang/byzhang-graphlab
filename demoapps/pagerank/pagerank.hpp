@@ -36,7 +36,7 @@
 
 #include <vector>
 #include <string>
-
+#include <boost/algorithm/string.hpp>
 #include <graphlab.hpp>
 
 /// Types------------------------------------------------------------------>
@@ -70,7 +70,7 @@ SERIALIZABLE_POD(edge_data);
 std::ostream& operator<<(std::ostream& out, const edge_data& edata);
 
 //! The type of graph used in this program
-typedef graphlab::igraph<graphlab::redis_graph<vertex_data, edge_data> > graph_type;
+typedef graphlab::redis_graph<vertex_data, edge_data> graph_type;
 // typedef graphlab::graph<vertex_data, edge_data> graph_type;
 
 

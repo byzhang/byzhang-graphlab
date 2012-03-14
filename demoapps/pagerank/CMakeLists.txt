@@ -1,4 +1,5 @@
 project(GraphLab)
-link_libraries(hiredis)
+link_libraries(hiredis hiredispp boost_wserialization)
 add_graphlab_executable(pagerank pagerank.cpp)
 add_graphlab_executable(advanced_pagerank advanced_pagerank.cpp)
+copy_file("test.tsv")
